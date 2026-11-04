@@ -1,11 +1,10 @@
 # Builds the Windows installer on GitHub's Windows machine.
-#  - every push to main: builds and keeps the installer as a workflow artifact (for a quick test)
-#  - a version tag (v0.1.0): builds and publishes a GitHub Release with AlexBooks-Setup.exe attached
+#  - every push to main: builds the installer, then publishes (or refreshes) the GitHub Release named after the
+#    version in src-tauri/tauri.conf.json, with AlexBooks-Setup.exe attached. Bumping the version = a new release.
 name: build
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -38,9 +37,17 @@ jobs:
         with:
           name: AlexBooks-Setup
           path: out/AlexBooks-Setup.exe
+      - name: Read the version
+        id: ver
+        shell: pwsh
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          "version=$v" >> $env:GITHUB_OUTPUT
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: AlexBooks for Windows ${{ steps.ver.outputs.version }}
           files: out/AlexBooks-Setup.exe
           body_path: RELEASE-NOTES.md

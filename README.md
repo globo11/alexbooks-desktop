@@ -14,7 +14,7 @@ The office's own window onto the AlexBooks server. The books, the files and the 
 
 `src-tauri/` is a small Rust program (Tauri 2) around WebView2, the Edge engine every Windows 10/11 PC already has, so the installer is about 8 MB. `ui/` holds the connect page the shell shows before an address is saved. Nothing is built by hand: GitHub Actions (`.github/workflows/build.yml`) builds `AlexBooks-Setup.exe` on a Windows runner on every push, and publishes a Release on a version tag.
 
-Release: bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, add the entry to `CHANGELOG.md`, write `RELEASE-NOTES.md`, commit, `git tag v0.x.y`, push the tag.
+Release: bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, add the entry to `CHANGELOG.md`, write `RELEASE-NOTES.md`, commit and push `main`. The workflow creates the tag and the Release itself.
 
 ## What is on the PC
 
