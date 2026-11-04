@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlexBooks</title>
+<style>
+  :root { --bg:#f5f5f7; --panel:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:#e8e8ed; --accent:#0b6e8e; --accent-soft:#e6f1f5; --err:#b3261e; --red-bg:#fdecec;
+          --font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  * { box-sizing:border-box }
+  html, body { height:100%; margin:0 }
+  body { background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; display:flex; align-items:center; justify-content:center; -webkit-user-select:none; user-select:none }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:36px 40px 32px; width:min(460px, 92vw); box-shadow:0 10px 30px rgba(0,0,0,.06) }
+  .logo { display:flex; align-items:center; gap:14px; margin-bottom:22px }
+  .logo img { width:56px; height:56px; border-radius:13px }
+  .logo b { font-size:22px; letter-spacing:-.01em }
+  .logo span { display:block; color:var(--muted); font-size:13px; margin-top:2px }
+  h1 { font-size:17px; margin:0 0 6px }
+  p { margin:0 0 16px; color:var(--muted); line-height:1.45 }
+  label { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px }
+  input { width:100%; font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); -webkit-user-select:text; user-select:text }
+  input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent) }
+  .hint { font-size:12.5px; color:var(--muted); margin-top:6px }
+  button { margin-top:18px; width:100%; font:inherit; font-size:15px; font-weight:600; padding:11px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer }
+  button:disabled { opacity:.6; cursor:default }
+  .err { display:none; margin-top:12px; background:var(--red-bg); color:var(--err); border-radius:8px; padding:9px 12px; font-size:14px }
+  .foot { margin-top:22px; font-size:12px; color:var(--muted); text-align:center }
+</style>
+</head>
+<body>
+<form class="card" id="f" autocomplete="off">
+  <div class="logo"><img src="logo.png" alt=""><div><b>AlexBooks</b><span>for Windows</span></div></div>
+  <h1>Connect to your office</h1>
+  <p>Type the address of the computer that runs AlexBooks in your office. You only do this once; the window remembers it.</p>
+  <label for="server">Server address</label>
+  <input id="server" name="server" placeholder="192.168.1.117" spellcheck="false">
+  <div class="hint">Just the name or the IP is enough — the port is added for you. It is the same address the browser icon opened.</div>
+  <div class="err" id="err"></div>
+  <button type="submit" id="go">Open AlexBooks</button>
+  <div class="foot">Nothing is stored on this PC but the address. The books stay on the server.</div>
+</form>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const inp = document.getElementById("server"), err = document.getElementById("err"), go = document.getElementById("go");
+  invoke("get_server").then(v => { if (v) inp.value = v; inp.focus(); }).catch(() => inp.focus());
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    err.style.display = "none"; go.disabled = true; go.textContent = "Opening…";
+    try { await invoke("connect", { server: inp.value }); }
+    catch (m) { err.textContent = typeof m === "string" ? m : "Could not open that address."; err.style.display = "block"; go.disabled = false; go.textContent = "Open AlexBooks"; }
+  });
+</script>
+</body>
+</html>

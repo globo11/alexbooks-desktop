@@ -1,0 +1,12 @@
+{
+  "name": "alexbooks-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AlexBooks for Windows — build tooling only (the app itself is Rust in src-tauri/)",
+  "scripts": {
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
