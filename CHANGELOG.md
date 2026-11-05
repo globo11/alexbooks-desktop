@@ -1,5 +1,13 @@
 # What's new — AlexBooks for Windows
 
+## 0.3.0 — checks on every start, certificate trust, self-update, a menu
+
+- **Every start** opens a short start page: *Opening <office>…* → reaches the server → opens it. If the server is off or on another network, a plain **Can't reach the office server** page says why, with *Try again* and *Connect to a different office* — no browser error pages.
+- **Trust the office server**: the first time a PC opens a server it does not trust yet, the program fetches the office certificate from the server and asks Windows to install it (Windows shows its own *Do you want to install this certificate?* prompt — answer Yes). No more certificate warnings, and no install file to run.
+- **Updates itself from the office server**: on every start it asks *its server* for a newer AlexBooks for Windows (the server fetches releases from GitHub under Settings → Other PCs, AlexBooks 1.25.7+). When there is one: *AlexBooks for Windows x.y.z is ready* with the notes, **Update now** / *Not now*; the download comes from the server, the installer runs by itself and the program reopens. Every update is checked against the project's signing key before it runs.
+- **Menu** (AlexBooks): Reload (F5) · Connect to a different office… · Check for updates… · About AlexBooks · Exit. The window title shows the office name.
+- Needs AlexBooks 1.25.7 on the server for certificate trust and updates (older servers still open; the checks just skip).
+
 ## 0.2.0 — Just this PC, or Network
 
 - First run asks **How will this PC use AlexBooks?** — *Just this PC* (AlexBooks runs on this computer; other PCs can join later) or *Network* (the office has a server).
