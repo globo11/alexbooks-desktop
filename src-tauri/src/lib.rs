@@ -61,7 +61,7 @@ fn saved_ca(app: &AppHandle) -> Option<String> {
     config_dir(app).and_then(|d| fs::read_to_string(d.join("ca.pem")).ok())
 }
 
-/// Turn what the person typed into the address the window opens: `192.168.1.117` → `https://192.168.1.117:8443/`.
+/// Turn what the person typed into the address the window opens: `192.168.1.50` → `https://192.168.1.50:8443/`.
 fn normalize(input: &str) -> Result<url::Url, String> {
     let mut s = input.trim().trim_end_matches('/').to_string();
     if s.is_empty() {
@@ -520,8 +520,8 @@ mod tests {
 
     #[test]
     fn addresses_are_completed() {
-        assert_eq!(normalize("192.168.1.117").unwrap().as_str(), "https://192.168.1.117:8443/");
-        assert_eq!(normalize(" https://192.168.1.117:8443/clients/3 ").unwrap().as_str(), "https://192.168.1.117:8443/");
+        assert_eq!(normalize("192.168.1.50").unwrap().as_str(), "https://192.168.1.50:8443/");
+        assert_eq!(normalize(" https://192.168.1.50:8443/clients/3 ").unwrap().as_str(), "https://192.168.1.50:8443/");
         assert_eq!(normalize("http://office-pc:8080").unwrap().as_str(), "http://office-pc:8080/");
         assert!(normalize("").is_err());
     }
