@@ -1,5 +1,11 @@
 # What's new — AlexBooks for Windows
 
+## 0.3.1 — says hello, checks daily
+
+- On every start the program tells its office server its PC name and version, so Settings → Other PCs on the server lists every PC that opens it (and the main office sees the list).
+- A window left open for days now looks for a newer launcher once a day and shows the update screen when there is one (Update now / Not now).
+- The launcher repository is public now — the program holds no secrets, and office servers fetch it with no token.
+
 ## 0.3.0 — checks on every start, certificate trust, self-update, a menu
 
 - **Every start** opens a short start page: *Opening <office>…* → reaches the server → opens it. If the server is off or on another network, a plain **Can't reach the office server** page says why, with *Try again* and *Connect to a different office* — no browser error pages.

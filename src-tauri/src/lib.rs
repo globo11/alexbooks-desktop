@@ -313,6 +313,22 @@ fn probe_blocking(app: &AppHandle, server: &str) -> Probe {
     }
 }
 
+/// Tell the server this PC exists (name + launcher version), so Settings → Other PCs lists it (0.3.1). Best effort.
+#[tauri::command]
+async fn hello(app: AppHandle, server: String) -> bool {
+    let version = app.package_info().version.to_string();
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(u) = normalize(&server) else { return false };
+        let pc = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default();
+        let Ok(mut url) = u.join("desktop/hello") else { return false };
+        url.query_pairs_mut().append_pair("pc", &pc).append_pair("v", &version);
+        let ca = saved_ca(&app);
+        http_client(false, ca.as_deref()).get(url).send().map(|r| r.status().is_success()).unwrap_or(false)
+    })
+    .await
+    .unwrap_or(false)
+}
+
 /// Can this PC reach that server, and does it trust it?
 #[tauri::command]
 async fn probe(app: AppHandle, server: String) -> Probe {
@@ -472,7 +488,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Pending(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, trust_ca, check_update, install_update
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update
         ])
         .setup(|app| {
             let menu = Menu::with_items(
@@ -501,6 +517,26 @@ pub fn run() {
                     "about" => show_start(app, "about"),
                     _ => Ok(()),
                 };
+            });
+            // 0.3.1: while the window stays open for days, look for a newer launcher once a day; when there is one,
+            // show the start page's update screen (it offers Update now / Not now and returns to the office).
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+                    let server = read_config(&handle).server;
+                    if server.is_empty() { continue; }
+                    let Ok(u) = normalize(&server) else { continue };
+                    let Ok(endpoint) = u.join("desktop/latest.json") else { continue };
+                    let ca = saved_ca(&handle).and_then(|pem| reqwest::Certificate::from_pem(pem.as_bytes()).ok());
+                    let updater = handle.updater_builder().endpoints(vec![endpoint]).ok().map(|b| b.timeout(Duration::from_secs(10))
+                        .configure_client(move |c| match &ca { Some(cert) => c.add_root_certificate(cert.clone()), None => c }).build().ok()).flatten();
+                    if let Some(updater) = updater {
+                        if let Ok(Some(_)) = updater.check().await {
+                            let _ = show_start(&handle, "update");
+                        }
+                    }
+                }
             });
             // Always start on the shipped page: it checks the saved server, the certificate and updates, then opens it.
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))

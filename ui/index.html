@@ -160,6 +160,7 @@
       return;
     }
     $("open-title").textContent = `Opening ${p.office}…`;
+    invoke("hello", { server: target.url }).catch(() => {});          // 0.3.1: this PC shows up under Settings → Other PCs
     await updateStep(target.url, false, () => invoke("connect", { server: target.url, office: target.office }).catch(m => { $("open-status").hidden = true; setErr("open-err", typeof m === "string" ? m : "Could not open the server."); $("open-actions").hidden = false; }));
   }
 
