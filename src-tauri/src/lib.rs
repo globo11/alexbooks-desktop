@@ -13,10 +13,11 @@
 //! A small native menu (Reload · Connect to a different office · Check for updates · About · Exit) is the only
 //! chrome around the server's pages.
 
-use std::{fs, path::PathBuf, sync::Mutex, time::Duration};
+use std::{fs, path::{Path, PathBuf}, sync::Mutex, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::{Update, UpdaterExt};
 
@@ -423,6 +424,97 @@ fn show_start(app: &AppHandle, mode: &str) -> Result<(), String> {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Downloads, new windows and outside links (0.4.0)
+//
+// A browser has a download shelf, tabs and a back button; a WebView2 window has none of them. Without the hooks
+// below a PDF or a package "downloads" into the Downloads folder in silence (a click that seems to do nothing),
+// a link with target=_blank opens nowhere, and a link to github.com would replace the office in this window.
+
+/// Where downloads go: the user's Downloads folder, falling back to the desktop, then the temp folder.
+fn downloads_dir(app: &AppHandle) -> PathBuf {
+    app.path().download_dir().or_else(|_| app.path().desktop_dir()).unwrap_or_else(|_| std::env::temp_dir())
+}
+
+/// `report.pdf` → `report (2).pdf` when the name is taken, like a browser does.
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let p = dir.join(name);
+    if !p.exists() {
+        return p;
+    }
+    let (stem, ext) = match name.rsplit_once('.') {
+        Some((s, e)) if !s.is_empty() => (s.to_string(), format!(".{e}")),
+        _ => (name.to_string(), String::new()),
+    };
+    (2..1000).map(|n| dir.join(format!("{stem} ({n}){ext}"))).find(|q| !q.exists()).unwrap_or(p)
+}
+
+/// Show the file: a PDF opens in the PC's PDF viewer; anything else (a package zip, a spreadsheet, a backup) is
+/// shown selected in Explorer so the person sees where it landed. A folder is simply opened.
+fn show_download(path: &Path) {
+    let is_pdf = path.extension().map(|e| e.eq_ignore_ascii_case("pdf")).unwrap_or(false);
+    #[cfg(windows)]
+    {
+        let r = if path.is_dir() {
+            std::process::Command::new("explorer").arg(path).spawn()
+        } else if is_pdf {
+            std::process::Command::new("cmd").args(["/C", "start", "", &path.to_string_lossy()]).spawn()
+        } else {
+            std::process::Command::new("explorer").arg(format!("/select,{}", path.to_string_lossy())).spawn()
+        };
+        let _ = r;
+    }
+    #[cfg(not(windows))]
+    {
+        let target = if is_pdf || path.is_dir() { path.to_path_buf() } else { path.parent().map(Path::to_path_buf).unwrap_or_default() };
+        let _ = std::process::Command::new("xdg-open").arg(target).spawn();
+    }
+}
+
+/// Open an address in the PC's own browser (GitHub, a bank's site, a mailto: link) — never inside this window.
+fn open_outside(url: &url::Url) {
+    #[cfg(windows)]
+    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url.as_str()]).spawn();
+    #[cfg(not(windows))]
+    let _ = std::process::Command::new("xdg-open").arg(url.as_str()).spawn();
+}
+
+/// Is this address the office server (or the shipped start page)? Everything else is "outside".
+fn is_ours(app: &AppHandle, url: &url::Url) -> bool {
+    let host = url.host_str().unwrap_or("").to_ascii_lowercase();
+    if host == "tauri.localhost" || url.scheme() == "tauri" {
+        return true;
+    }
+    match normalize(&read_config(app).server) {
+        Ok(server) => server.host_str().map(|h| h.eq_ignore_ascii_case(&host)).unwrap_or(false),
+        Err(_) => false,
+    }
+}
+
+/// A small message inside the page: the app shows it in its own style when it knows how (1.27.4), else a plain one.
+fn page_notice(app: &AppHandle, text: &str) {
+    if let Some(w) = app.get_webview_window("main") {
+        let js = format!(
+            "(function(t){{ if (window.alexbooksNotice) {{ window.alexbooksNotice(t); return; }} \
+             var d=document.getElementById('ab-notice'); if (!d) {{ d=document.createElement('div'); d.id='ab-notice'; d.setAttribute('role','status'); \
+             d.style.cssText='position:fixed;right:24px;bottom:24px;z-index:9999;background:#1f2933;color:#fff;padding:10px 16px;border-radius:12px;font:600 14px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.25)'; \
+             document.body.appendChild(d); }} d.textContent=t; d.hidden=false; clearTimeout(d._t); d._t=setTimeout(function(){{ d.hidden=true; }}, 6000); }})({});",
+            serde_json::to_string(text).unwrap_or_default()
+        );
+        let _ = w.eval(&js);
+    }
+}
+
+/// The name a download will be saved under: what the server said (``Content-Disposition`` becomes the suggested
+/// path), else the last part of the address.
+fn download_name(suggested: &Path, url: &url::Url) -> String {
+    let from_suggested = suggested.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if !from_suggested.is_empty() {
+        return from_suggested;
+    }
+    url.path_segments().and_then(|mut s| s.next_back()).filter(|n| !n.is_empty()).unwrap_or("download").to_string()
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Self-update from the office server (0.3.0)
 
 #[derive(Debug, Clone, Serialize)]
@@ -498,7 +590,10 @@ pub fn run() {
                     "AlexBooks",
                     true,
                     &[
+                        &MenuItem::with_id(app, "back", "Back", true, Some("Alt+Left"))?,
+                        &MenuItem::with_id(app, "forward", "Forward", true, Some("Alt+Right"))?,
                         &MenuItem::with_id(app, "reload", "Reload", true, Some("F5"))?,
+                        &MenuItem::with_id(app, "downloads", "Open the Downloads folder", true, None::<&str>)?,
                         &PredefinedMenuItem::separator(app)?,
                         &MenuItem::with_id(app, "switch", "Connect to a different office…", true, None::<&str>)?,
                         &MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?,
@@ -512,6 +607,9 @@ pub fn run() {
             app.on_menu_event(|app, ev| {
                 let _ = match ev.id().as_ref() {
                     "reload" => app.get_webview_window("main").map(|w| w.eval("location.reload()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
+                    "back" => app.get_webview_window("main").map(|w| w.eval("history.back()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
+                    "forward" => app.get_webview_window("main").map(|w| w.eval("history.forward()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
+                    "downloads" => { show_download(&downloads_dir(app)); Ok(()) }
                     "switch" => show_start(app, "switch"),
                     "update" => show_start(app, "update"),
                     "about" => show_start(app, "about"),
@@ -539,10 +637,54 @@ pub fn run() {
                 }
             });
             // Always start on the shipped page: it checks the saved server, the certificate and updates, then opens it.
+            let h_dl = app.handle().clone();
+            let h_nav = app.handle().clone();
+            let h_new = app.handle().clone();
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("AlexBooks")
                 .inner_size(1280.0, 860.0)
                 .min_inner_size(900.0, 600.0)
+                .user_agent(&format!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AlexBooksDesktop/{}", env!("CARGO_PKG_VERSION")))
+                .zoom_hotkeys_enabled(true)                     // Ctrl + / Ctrl - / Ctrl 0, like a browser
+                .disable_drag_drop_handler()                    // 0.4.0: let the page's own drop zones receive files from Explorer
+                .on_download(move |_wv, ev| {
+                    match ev {
+                        DownloadEvent::Requested { url, destination } => {
+                            let name = download_name(destination, &url);
+                            *destination = unique_path(&downloads_dir(&h_dl), &name);
+                            page_notice(&h_dl, &format!("Downloading {name}…"));
+                        }
+                        DownloadEvent::Finished { path, success, .. } => match (success, path) {
+                            (true, Some(p)) => {
+                                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                                page_notice(&h_dl, &format!("Saved to Downloads: {name}"));
+                                show_download(&p);
+                            }
+                            _ => page_notice(&h_dl, "The download did not finish."),
+                        },
+                        _ => {}
+                    }
+                    true
+                })
+                .on_navigation(move |url| {
+                    if is_ours(&h_nav, url) || matches!(url.scheme(), "about" | "blob" | "data") {
+                        true
+                    } else {
+                        open_outside(url);                      // github.com, mailto:, a bank — the PC's browser, not this window
+                        false
+                    }
+                })
+                .on_new_window(move |url, _features| {
+                    if is_ours(&h_new, &url) {
+                        // target=_blank on our own server (a PDF, a statement's original): a second AlexBooks window
+                        let label = format!("w{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
+                        let _ = WebviewWindowBuilder::new(&h_new, label, WebviewUrl::External(url))
+                            .title("AlexBooks").inner_size(1100.0, 820.0).zoom_hotkeys_enabled(true).build();
+                    } else {
+                        open_outside(&url);
+                    }
+                    NewWindowResponse::Deny
+                })
                 .build()?;
             Ok(())
         })
@@ -552,7 +694,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{normalize, parse_beacon};
+    use super::{download_name, normalize, parse_beacon, unique_path};
+
+    #[test]
+    fn downloads_get_a_name_and_never_overwrite() {
+        let dir = std::env::temp_dir().join(format!("alexbooks-dl-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let u = url::Url::parse("https://192.0.2.10:8443/clients/6/reports/pl.pdf?start=2025-01-01").unwrap();
+        assert_eq!(download_name(std::path::Path::new(""), &u), "pl.pdf");                    // no suggestion: the address
+        let suggested = std::env::temp_dir().join("P&L 2025.pdf");
+        assert_eq!(download_name(&suggested, &u), "P&L 2025.pdf");                             // the server's Content-Disposition wins
+        assert_eq!(unique_path(&dir, "office.zip"), dir.join("office.zip"));
+        std::fs::write(dir.join("office.zip"), b"x").unwrap();
+        assert_eq!(unique_path(&dir, "office.zip"), dir.join("office (2).zip"));
+        std::fs::write(dir.join("office (2).zip"), b"x").unwrap();
+        assert_eq!(unique_path(&dir, "office.zip"), dir.join("office (3).zip"));
+        assert_eq!(unique_path(&dir, "README"), dir.join("README"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn addresses_are_completed() {

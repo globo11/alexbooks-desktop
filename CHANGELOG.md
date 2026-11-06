@@ -1,5 +1,14 @@
 # What's new — AlexBooks for Windows
 
+## 0.4.0 — downloads you can see, links that open, drag-and-drop, back and zoom
+
+- **Downloads show themselves.** A browser has a download bar; this window had nothing, so a PDF or an office package landed in Downloads in silence and a click looked like it did nothing (and three clicks made three copies). Now a *Downloading…* note appears, then *Saved to Downloads: name* — and the file is shown: a PDF opens in the PC's PDF viewer, anything else (a package zip, a spreadsheet, a backup) is selected in an Explorer window. Same name again gets *(2)*, *(3)*, like a browser.
+- **Open in a new tab works.** Links the app opens in a new tab (a statement's original file, *Open PDF* on the statement reader) opened nowhere; they now open in a second AlexBooks window.
+- **Outside links go to the PC's browser.** GitHub, a bank's website, a mailto: link — Edge or Chrome opens them; the office window stays on the office.
+- **Drag-and-drop from Explorer works.** Dropping a statement PDF onto an import box did nothing in the window (the shell was swallowing the drop); the page's drop zones now receive files like they do in a browser.
+- **Back, Forward, Reload and zoom.** Alt+Left / Alt+Right (also under the AlexBooks menu), F5, and Ctrl + / Ctrl − / Ctrl 0 to zoom, as in a browser. The menu also has *Open the Downloads folder*.
+- The program identifies itself to the server as *AlexBooksDesktop/0.4.0*, so the app can tell when it runs inside the window.
+
 ## 0.3.1 — says hello, checks daily
 
 - On every start the program tells its office server its PC name and version, so Settings → Other PCs on the server lists every PC that opens it (and the main office sees the list).

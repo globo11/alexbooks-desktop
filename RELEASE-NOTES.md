@@ -1,6 +1,8 @@
-AlexBooks for Windows 0.3.1 — says hello, checks daily.
+AlexBooks for Windows 0.4.0 — downloads you can see, links that open, drag-and-drop, back and zoom.
 
-- On every start the program tells its office server its PC name and version, so Settings → Other PCs lists every PC that opens it.
-- A window left open for days looks for a newer launcher once a day.
+- Downloads announce themselves (Downloading… / Saved to Downloads: name), then the file is shown: a PDF opens in the PDF viewer, anything else is selected in Explorer. Repeated names get (2), (3).
+- Links that open in a new tab now open a second AlexBooks window; outside links (GitHub, mailto:) go to the PC's browser.
+- Drag-and-drop of files from Explorer onto the app's import boxes works.
+- Back / Forward (Alt+Left / Alt+Right), Reload (F5), zoom (Ctrl +/−/0), and Open the Downloads folder, under the AlexBooks menu.
 
-Needs AlexBooks 1.27 on the server for the PC list; older servers simply ignore the hello.
+Works with any AlexBooks server; 1.27.4 adds the in-app styling of the download notes.
