@@ -23,3 +23,7 @@ Release: bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`
 ## What is on the PC
 
 `%APPDATA%\com.alextaxservices.alexbooks\config.json` — the server address; `ca.pem` next to it — the office certificate this PC was told to trust (also added to the user's Windows certificate store). `%LOCALAPPDATA%\AlexBooks\` — the program. Nothing else.
+
+## Keeping the launcher and the app in step
+
+`compat.json` names the oldest AlexBooks the launcher works with (`min_app`). The office server reads it at the release's tag before fetching the installer: a launcher that needs a newer app than the server runs waits on GitHub, and the PCs keep the launcher they have, until the app has updated — then the server fetches it by itself. The other direction is the server's `MIN_LAUNCHER` (app/desktop.py): PCs below it are flagged on Settings → Updates and update at their next start. Raise `min_app` whenever the launcher starts relying on something new on the server (a new address, a new field in `/desktop/hello`).

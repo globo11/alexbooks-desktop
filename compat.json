@@ -1,0 +1,4 @@
+{
+  "min_app": "2.1.2",
+  "_": "The oldest AlexBooks (the office server) this launcher works with. The server reads this file at the release's tag before fetching the launcher; a launcher that needs a newer app waits on GitHub until the app has updated. Raise it when the launcher starts relying on something new on the server."
+}
