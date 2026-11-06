@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AlexBooks</title>
+<style>
+  :root { --bg:#f5f5f7; --panel:#fff; --ink:#1d1d1f; --muted:#6e6e73; --line:#e8e8ed; --accent:#0b6e8e; --accent-soft:#e6f1f5; --err:#b3261e; --red-bg:#fdecec; --ok:#2e7d4f; --warn-bg:#fff6e5; --warn:#8a5a00;
+          --font:-apple-system,BlinkMacSystemFont,"Segoe UI Variable","Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  * { box-sizing:border-box }
+  html, body { height:100%; margin:0 }
+  body { background:var(--bg); color:var(--ink); font-family:var(--font); font-size:15px; display:flex; align-items:center; justify-content:center; -webkit-user-select:none; user-select:none }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:34px 40px 30px; width:min(540px, 92vw); box-shadow:0 10px 30px rgba(0,0,0,.06) }
+  .logo { display:flex; align-items:center; gap:14px; margin-bottom:22px }
+  .logo img { width:56px; height:56px; border-radius:13px }
+  .logo b { font-size:22px; letter-spacing:-.01em }
+  .logo span { display:block; color:var(--muted); font-size:13px; margin-top:2px }
+  h1 { font-size:17px; margin:0 0 6px }
+  p { margin:0 0 16px; color:var(--muted); line-height:1.45 }
+  .choice { display:block; border:1px solid var(--line); border-radius:10px; padding:14px 16px; margin-bottom:10px; cursor:pointer }
+  .choice:hover { border-color:var(--accent); background:var(--accent-soft) }
+  .choice b { display:block; font-size:15px; margin-bottom:3px }
+  .choice small { color:var(--muted); font-size:13px; line-height:1.4 }
+  label { display:block; font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; margin-bottom:6px }
+  input { width:100%; font:inherit; font-size:16px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); -webkit-user-select:text; user-select:text }
+  input:focus { outline:2px solid var(--accent); outline-offset:1px; border-color:var(--accent) }
+  .hint { font-size:12.5px; color:var(--muted); margin-top:6px }
+  button { font:inherit; font-size:15px; font-weight:600; padding:11px 16px; border:0; border-radius:8px; background:var(--accent); color:#fff; cursor:pointer }
+  button.quiet { background:transparent; color:var(--accent); font-weight:500; padding:8px 4px }
+  button:disabled { opacity:.6; cursor:default }
+  .row { display:flex; gap:10px; align-items:center; margin-top:16px }
+  .grow { flex:1 }
+  .err { display:none; margin-top:12px; background:var(--red-bg); color:var(--err); border-radius:8px; padding:9px 12px; font-size:14px; line-height:1.4 }
+  .err.on { display:block }
+  .note { background:var(--warn-bg); color:var(--warn); border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.45; margin-bottom:14px }
+  .list { border:1px solid var(--line); border-radius:10px; overflow:hidden; margin-bottom:6px }
+  .srv { display:flex; align-items:center; gap:12px; padding:12px 14px; border-bottom:1px solid var(--line); cursor:pointer }
+  .srv:last-child { border-bottom:0 }
+  .srv:hover { background:var(--accent-soft) }
+  .srv .dot { width:9px; height:9px; border-radius:50%; background:var(--ok); flex:none }
+  .srv .dot.maybe { background:#b36b00 }
+  .srv b { display:block; font-size:15px }
+  .srv small { color:var(--muted); font-size:12.5px }
+  .status { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:14px; padding:14px 2px }
+  .spin { width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:s 1s linear infinite; flex:none }
+  @keyframes s { to { transform:rotate(360deg) } }
+  .bar { height:8px; background:var(--line); border-radius:4px; overflow:hidden; margin:10px 0 6px }
+  .bar i { display:block; height:100%; width:0; background:var(--accent); transition:width .2s }
+  .foot { margin-top:20px; font-size:12px; color:var(--muted); text-align:center }
+  dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0 0 16px; font-size:14px }
+  dt { color:var(--muted) } dd { margin:0; -webkit-user-select:text; user-select:text }
+  .notes { max-height:160px; overflow:auto; font-size:13.5px; line-height:1.45; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px; white-space:pre-wrap; -webkit-user-select:text; user-select:text }
+  [hidden] { display:none !important }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo"><img src="logo.png" alt=""><div><b>AlexBooks</b><span id="tagline">for Windows</span></div></div>
+
+  <!-- opening the saved office: reachability → certificate → updates → open -->
+  <section id="s-open" hidden>
+    <h1 id="open-title">Opening AlexBooks…</h1>
+    <div class="status" id="open-status"><span class="spin"></span><span id="open-text">Reaching the office server…</span></div>
+    <div class="err" id="open-err"></div>
+    <div class="row" id="open-actions" hidden><button class="quiet" id="open-switch">Connect to a different office</button><span class="grow"></span><button id="open-retry">Try again</button></div>
+  </section>
+
+  <!-- the certificate step -->
+  <section id="s-trust" hidden>
+    <h1>Trust the office server</h1>
+    <p id="trust-text">This PC has not been told to trust the office server's certificate yet. Without it, AlexBooks cannot open safely.</p>
+    <div class="note">Click <b>Trust</b>. Windows will ask <i>Do you want to install this certificate?</i> for <b>AlexBooks Local CA</b> — answer <b>Yes</b>. It is your own office server's certificate, nothing from the internet.</div>
+    <div class="err" id="trust-err"></div>
+    <div class="row"><button class="quiet" id="trust-back">← Back</button><span class="grow"></span><button id="trust-go">Trust</button></div>
+  </section>
+
+  <!-- updates -->
+  <section id="s-update" hidden>
+    <h1 id="upd-title">Checking for updates…</h1>
+    <div class="status" id="upd-status"><span class="spin"></span><span id="upd-text">Asking the office server…</span></div>
+    <div id="upd-found" hidden>
+      <p id="upd-found-text"></p>
+      <div class="notes" id="upd-notes" hidden></div>
+      <div class="bar" id="upd-bar" hidden><i></i></div>
+      <p class="hint" id="upd-hint" hidden>Downloading from the office server. AlexBooks closes, installs, and opens again by itself.</p>
+    </div>
+    <div class="err" id="upd-err"></div>
+    <div class="row" id="upd-actions" hidden><button class="quiet" id="upd-skip">Not now</button><span class="grow"></span><button id="upd-go">Update now</button></div>
+    <div class="row" id="upd-done" hidden><span class="grow"></span><button id="upd-continue">Continue</button></div>
+  </section>
+
+  <!-- 1. the choice (first run, or "Connect to a different office") -->
+  <section id="s-choice" hidden>
+    <h1>How will this PC use AlexBooks?</h1>
+    <p>You only answer this once. It can be changed later from the AlexBooks menu.</p>
+    <a class="choice" id="c-local"><b>Just this PC</b><small>AlexBooks runs on this computer. One office, one computer — other PCs can join later.</small></a>
+    <a class="choice" id="c-network"><b>Network</b><small>The office has a computer that runs AlexBooks (the server). This PC opens it.</small></a>
+    <div class="row" id="choice-cancel" hidden><button class="quiet" id="choice-back">← Keep the current office</button></div>
+    <div class="foot">Nothing is stored on this PC but the address. The books stay where AlexBooks runs.</div>
+  </section>
+
+  <!-- 2a. just this PC -->
+  <section id="s-local" hidden>
+    <h1>Just this PC</h1>
+    <div class="status" id="local-status"><span class="spin"></span><span>Looking for AlexBooks on this computer…</span></div>
+    <div id="local-found" hidden class="list"></div>
+    <div id="local-missing" hidden>
+      <p>AlexBooks is not running on this computer yet. Install it here with the AlexBooks install package (it sets up the program as a service and comes back to this screen), then try again.</p>
+    </div>
+    <div class="err" id="local-err"></div>
+    <div class="row"><button class="quiet" id="local-back">← Back</button><span class="grow"></span><button id="local-retry" hidden>Try again</button></div>
+  </section>
+
+  <!-- 2b. network -->
+  <section id="s-network" hidden>
+    <h1>Network</h1>
+    <div class="status" id="net-status"><span class="spin"></span><span>Looking for AlexBooks servers on your network…</span></div>
+    <div id="net-list" class="list" hidden></div>
+    <div id="net-none" hidden><p>No server answered. Make sure the server PC is on and on the same network, or type its address below.</p></div>
+    <form id="f" autocomplete="off">
+      <label for="server">Or type the server's address</label>
+      <input id="server" name="server" placeholder="for example 192.168.0.10 or office-server" spellcheck="false">
+      <div class="hint">The name or the IP is enough — the port is added for you. It is the address the browser icon opens on the other PCs.</div>
+      <div class="err" id="err"></div>
+      <div class="row"><button type="button" class="quiet" id="net-back">← Back</button><span class="grow"></span><button type="button" class="quiet" id="net-again">Search again</button><button type="submit" id="go">Open AlexBooks</button></div>
+    </form>
+  </section>
+
+  <!-- about -->
+  <section id="s-about" hidden>
+    <h1>About AlexBooks for Windows</h1>
+    <dl><dt>Program</dt><dd id="ab-version">—</dd><dt>Office server</dt><dd id="ab-server">—</dd><dt>Server version</dt><dd id="ab-sver">—</dd></dl>
+    <p>This program is only the window. The books, the users and the files live on the office server, and the program updates itself from that server.</p>
+    <div class="row"><span class="grow"></span><button id="ab-back">Back to AlexBooks</button></div>
+  </section>
+</div>
+<script>
+  const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
+  const $ = (id) => document.getElementById(id);
+  const SECTIONS = ["s-open", "s-trust", "s-update", "s-choice", "s-local", "s-network", "s-about"];
+  const show = (id) => { for (const s of SECTIONS) $(s).hidden = s !== id; };
+  const setErr = (id, m) => { const e = $(id); e.textContent = m || ""; e.classList.toggle("on", !!m); };
+  let saved = "";                 // the server saved on this PC ("" on first run)
+  let target = null;              // {url, office, version} being opened
+  let afterUpdate = null;         // what to do when the update step ends
+
+  // ---------- opening a server: probe → trust → update → open ----------
+  async function openServer(url, fromChoice) {
+    target = { url, office: "", version: "" };
+    show("s-open"); $("open-title").textContent = "Opening AlexBooks…"; $("open-text").textContent = "Reaching the office server…";
+    $("open-status").hidden = false; $("open-actions").hidden = true; setErr("open-err", "");
+    const p = await invoke("probe", { server: url }).catch(() => ({ status: "unreachable", message: "Something went wrong while reaching the server." }));
+    target.url = p.url || url; target.office = p.office || ""; target.version = p.version || "";
+    if (p.status === "untrusted") { $("trust-text").textContent = `This PC has not been told to trust ${p.office || "the office server"}'s certificate yet. Without it, AlexBooks cannot open safely.`; setErr("trust-err", ""); show("s-trust"); return; }
+    if (p.status !== "ok") {
+      $("open-title").textContent = p.status === "not_alexbooks" ? "That is not an AlexBooks server" : "Can't reach the office server";
+      $("open-status").hidden = true; setErr("open-err", p.message || "No answer."); $("open-actions").hidden = false;
+      $("open-switch").textContent = fromChoice ? "← Back" : "Connect to a different office";
+      return;
+    }
+    $("open-title").textContent = `Opening ${p.office}…`;
+    invoke("hello", { server: target.url }).catch(() => {});          // 0.3.1: this PC shows up under Settings → Other PCs
+    await updateStep(target.url, false, () => invoke("connect", { server: target.url, office: target.office }).catch(m => { $("open-status").hidden = true; setErr("open-err", typeof m === "string" ? m : "Could not open the server."); $("open-actions").hidden = false; }));
+  }
+
+  // ---------- update step ----------
+  async function updateStep(url, verbose, next) {
+    afterUpdate = next;
+    if (verbose) { show("s-update"); $("upd-title").textContent = "Checking for updates…"; }
+    else { $("open-text").textContent = "Checking for updates…"; }
+    $("upd-status").hidden = false; $("upd-found").hidden = true; $("upd-actions").hidden = true; $("upd-done").hidden = true; setErr("upd-err", "");
+    let info = null, failed = "";
+    try { info = await invoke("check_update", { server: url }); } catch (m) { failed = typeof m === "string" ? m : "The update check did not work."; }
+    if (!info) {
+      if (verbose) {
+        $("upd-status").hidden = true; $("upd-done").hidden = false;
+        if (failed) { $("upd-title").textContent = "Could not check for updates"; setErr("upd-err", failed + " The office server fetches AlexBooks for Windows from GitHub under Settings → Other PCs."); }
+        else { const v = await invoke("app_version").catch(() => ""); $("upd-title").textContent = "You have the latest version"; $("upd-found").hidden = false; $("upd-found-text").textContent = `AlexBooks for Windows ${v} is the version your office server has.`; }
+        return;
+      }
+      return next();          // quiet start: an update check that fails never blocks the office
+    }
+    show("s-update"); $("upd-status").hidden = true; $("upd-found").hidden = false;
+    $("upd-title").textContent = `AlexBooks for Windows ${info.version} is ready`;
+    $("upd-found-text").textContent = `You have ${info.current}. The office server has ${info.version}.`;
+    if (info.notes) { $("upd-notes").textContent = info.notes; $("upd-notes").hidden = false; }
+    $("upd-actions").hidden = false;
+  }
+  async function installUpdate() {
+    $("upd-actions").hidden = true; $("upd-bar").hidden = false; $("upd-hint").hidden = false; setErr("upd-err", "");
+    const bar = $("upd-bar").querySelector("i");
+    const un = await listen("update-progress", (e) => { const d = e.payload; if (d.total) bar.style.width = Math.min(100, Math.round(d.got * 100 / d.total)) + "%"; });
+    try { await invoke("install_update"); }
+    catch (m) { un(); $("upd-bar").hidden = true; $("upd-hint").hidden = true; setErr("upd-err", (typeof m === "string" ? m : "The update did not install.") + " You can keep using this version."); $("upd-done").hidden = false; }
+  }
+  $("upd-go").addEventListener("click", installUpdate);
+  $("upd-skip").addEventListener("click", () => afterUpdate && afterUpdate());
+  $("upd-continue").addEventListener("click", () => afterUpdate && afterUpdate());
+
+  // ---------- trust step ----------
+  $("trust-go").addEventListener("click", async () => {
+    $("trust-go").disabled = true; $("trust-go").textContent = "Waiting for Windows…"; setErr("trust-err", "");
+    try { await invoke("trust_ca", { server: target.url }); openServer(target.url, false); }
+    catch (m) { setErr("trust-err", typeof m === "string" ? m : "Could not trust the certificate."); }
+    $("trust-go").disabled = false; $("trust-go").textContent = "Trust";
+  });
+  $("trust-back").addEventListener("click", () => saved ? openServer(saved, false) : show("s-choice"));
+
+  // ---------- open page buttons ----------
+  $("open-retry").addEventListener("click", () => openServer(target.url, false));
+  $("open-switch").addEventListener("click", () => { if ($("open-switch").textContent.startsWith("←")) { show(lastChoice); } else { showChoice(); } });
+
+  // ---------- first run / Connect to a different office ----------
+  let lastChoice = "s-choice";
+  function showChoice() { show("s-choice"); $("choice-cancel").hidden = !saved; }
+  function serverRow(f) {
+    const d = document.createElement("div"); d.className = "srv";
+    const host = f.url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    d.innerHTML = `<span class="dot ${f.how === "scan" ? "maybe" : ""}"></span><div class="grow"><b></b><small></small></div><button type="button">Connect</button>`;
+    d.querySelector("b").textContent = f.office;
+    d.querySelector("small").textContent = host + (f.version ? " · AlexBooks " + f.version : "") + (f.how === "scan" ? " · something answers on the AlexBooks port" : "");
+    d.addEventListener("click", () => openServer(f.url, true));
+    return d;
+  }
+  async function checkLocal() {
+    lastChoice = "s-local";
+    $("local-status").hidden = false; $("local-found").hidden = true; $("local-missing").hidden = true; $("local-retry").hidden = true;
+    const f = await invoke("check_local").catch(() => null);
+    $("local-status").hidden = true;
+    if (f) { $("local-found").innerHTML = ""; $("local-found").appendChild(serverRow(f)); $("local-found").hidden = false; }
+    else { $("local-missing").hidden = false; $("local-retry").hidden = false; }
+  }
+  async function search() {
+    lastChoice = "s-network";
+    $("net-status").hidden = false; $("net-list").hidden = true; $("net-none").hidden = true;
+    const found = await invoke("discover").catch(() => []);
+    $("net-status").hidden = true;
+    if (found.length) { $("net-list").innerHTML = ""; found.forEach(f => $("net-list").appendChild(serverRow(f))); $("net-list").hidden = false; }
+    else { $("net-none").hidden = false; $("server").focus(); }
+  }
+  $("c-local").addEventListener("click", () => { show("s-local"); checkLocal(); });
+  $("c-network").addEventListener("click", () => { show("s-network"); search(); });
+  $("choice-back").addEventListener("click", () => openServer(saved, false));
+  $("local-back").addEventListener("click", showChoice);
+  $("net-back").addEventListener("click", showChoice);
+  $("local-retry").addEventListener("click", checkLocal);
+  $("net-again").addEventListener("click", search);
+  $("f").addEventListener("submit", (e) => { e.preventDefault(); const v = $("server").value.trim(); if (!v) { setErr("err", "Type the server's address."); return; } setErr("err", ""); lastChoice = "s-network"; openServer(v, true); });
+
+  // ---------- about ----------
+  async function showAbout() {
+    show("s-about");
+    $("ab-version").textContent = await invoke("app_version").catch(() => "—");
+    $("ab-server").textContent = saved ? saved.replace(/^https?:\/\//, "").replace(/\/$/, "") : "none yet";
+    if (saved) { const p = await invoke("probe", { server: saved }).catch(() => null); $("ab-sver").textContent = p && p.version ? `${p.version}${p.office ? " · " + p.office : ""}` : "—"; }
+  }
+  $("ab-back").addEventListener("click", () => saved ? openServer(saved, false) : showChoice());
+
+  // ---------- start ----------
+  (async () => {
+    saved = await invoke("get_server").catch(() => "");
+    const mode = (location.hash || "").replace("#", "");
+    if (mode === "about") return showAbout();
+    if (mode === "update" && saved) { target = { url: saved }; return updateStep(saved, true, () => openServer(saved, false)); }
+    if (mode === "switch" || !saved) { if (saved) $("server").value = saved.replace(/^https?:\/\//, "").replace(/:8443\/$/, "").replace(/\/$/, ""); return showChoice(); }
+    openServer(saved, false);
+  })();
+</script>
+</body>
+</html>
