@@ -696,6 +696,12 @@ fn find_recent_package(app: &AppHandle) -> Option<String> {
     best.map(|(_, p)| p.to_string_lossy().to_string())
 }
 
+/// 1.3.2: the Set up a new office screen asks again each time it opens (the person may have just clicked the attachment).
+#[tauri::command]
+fn recent_package(app: AppHandle) -> Option<String> {
+    find_recent_package(&app)
+}
+
 #[tauri::command]
 fn pending_package(pending: State<'_, PendingPackage>) -> Option<String> {
     pending.0.lock().ok().and_then(|mut p| p.take())
@@ -797,7 +803,7 @@ pub fn run() {
         .manage(Pending(Mutex::new(None)))
         .manage(PendingPackage(Mutex::new(package_from_args(std::env::args()))))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package
         ])
         .setup(|app| {
             let menu = Menu::with_items(

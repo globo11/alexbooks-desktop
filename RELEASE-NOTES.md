@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.3.1 — A just-downloaded package is found by itself at first start; a package older than a week no longer installs.
+AlexBooks for Windows 1.3.2 — Set up a new office without a package points back to the email's attachment and picks it up once downloaded.

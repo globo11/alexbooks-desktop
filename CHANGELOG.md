@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.2 — when the package is missing
+
+- Set up a new office without a package on the PC says where it is: the attachment at the very bottom of the AlexBooks email — click it, come back, and it is picked up by itself (the screen looks again every time it opens).
+
 ## 1.3.1 — packages that find themselves, and die on time
 
 - At a first start, a package just downloaded to Downloads or the Desktop is picked up by itself: click the attachment first or the installer first, either way AlexBooks lands on Set up a new office with the file in hand.

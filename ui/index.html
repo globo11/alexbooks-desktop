@@ -120,6 +120,7 @@
   <section id="s-package" hidden>
     <h1>Set up a new office</h1>
     <p id="pkg-intro">Open the <b>.abp</b> file from the email (double-click it) or pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
+    <div class="note" id="pkg-missing">No package on this PC yet. Go back to the email from AlexBooks: the package is the <b>attachment at the very bottom</b> of it (the .abp file). Click it so it downloads, then come back here — the file is picked up by itself, or use <i>Pick the package file…</i> to find it in Downloads.</div>
     <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8"></span></div>
     <form id="pkg-form" autocomplete="off" style="margin-top:10px">
       <label for="pkg-pass">Passphrase (from the email)</label>
@@ -263,9 +264,14 @@
   $("c-local").addEventListener("click", () => { show("s-local"); checkLocal(); });
   // ---------- a new office from an emailed package (1.1.0) ----------
   let pkgPath = "";
-  $("c-package").addEventListener("click", () => { lastChoice = "s-package"; show("s-package"); $("pkg-status").hidden = true; setErr("pkg-err", ""); });
+  $("c-package").addEventListener("click", async () => {
+    lastChoice = "s-package"; show("s-package"); $("pkg-status").hidden = true; setErr("pkg-err", "");
+    // 1.3.2: look again for a just-downloaded package each time this screen opens; say where to get it when there is none
+    if (!pkgPath) { const p = await invoke("recent_package").catch(() => null); if (p) usePackage(p); }
+    $("pkg-missing").hidden = !!pkgPath;
+  });
   $("pkg-back").addEventListener("click", showChoice);
-  function usePackage(p) { pkgPath = p; $("pkg-name").textContent = "✓ " + p.split(/[\\/]/).pop(); $("pkg-go").disabled = false; $("pkg-pass").focus(); }
+  function usePackage(p) { pkgPath = p; $("pkg-name").textContent = "✓ " + p.split(/[\\/]/).pop(); $("pkg-go").disabled = false; $("pkg-missing").hidden = true; $("pkg-pass").focus(); }
   $("pkg-pick").addEventListener("click", async () => {
     const p = await invoke("pick_package").catch(() => null);
     if (p) usePackage(p);
@@ -281,7 +287,7 @@
   $("pkg-form").addEventListener("submit", async (e) => {
     e.preventDefault(); setErr("pkg-err", "");
     const pass = $("pkg-pass").value.trim();
-    if (!pkgPath) { setErr("pkg-err", "Pick the package file first."); return; }
+    if (!pkgPath) { setErr("pkg-err", "There is no package yet: download the attachment at the bottom of the AlexBooks email first, then pick it."); $("pkg-missing").hidden = false; return; }
     if (!pass) { setErr("pkg-err", "Type the passphrase from the email."); return; }
     $("pkg-go").disabled = true;
     try { await invoke("install_package", { path: pkgPath, passphrase: pass }); }
