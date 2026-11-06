@@ -1,5 +1,10 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.1 — packages that find themselves, and die on time
+
+- At a first start, a package just downloaded to Downloads or the Desktop is picked up by itself: click the attachment first or the installer first, either way AlexBooks lands on Set up a new office with the file in hand.
+- A package older than a week (AlexBooks 2.2.7+ writes the date inside) installs nothing: "This package expired — ask the main office for a new one."
+
 ## 1.3.0 — double-click the package
 
 - The `.abp` package from the new-office email now opens with a double-click: AlexBooks for Windows registers the file type when it installs, and opening the file lands straight on **Set up a new office** with the file already picked — only the passphrase to type. Works whether AlexBooks is closed or already open.

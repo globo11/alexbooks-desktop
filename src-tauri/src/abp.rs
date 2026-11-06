@@ -71,3 +71,65 @@ mod tests {
         assert!(open(b"PK\x03\x04", "x").is_err());
     }
 }
+
+/// 1.3.1: a package carries the day it stops working (``expires`` in files/install/office.json, UTC, written by
+/// AlexBooks 2.2.7+). Past it, the package installs nothing — a forwarded email found weeks later is harmless.
+/// Older packages, and move packages, have no date and are taken as before.
+pub fn check_expiry(zip_bytes: &[u8]) -> Result<(), String> {
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(zip_bytes)).map_err(|e| format!("The package is damaged: {e}"))?;
+    let mut text = String::new();
+    for i in 0..archive.len() {
+        let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
+        if f.name().ends_with("/files/install/office.json") {
+            f.read_to_string(&mut text).map_err(|e| e.to_string())?;
+            break;
+        }
+    }
+    let Some(stamp) = json_string(&text, "expires") else { return Ok(()) };
+    let Some(expires) = unix_seconds(&stamp) else { return Ok(()) };
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
+    if now > expires {
+        return Err(format!("This package expired on {} — packages work for a week. Ask the main office for a new one; it takes them a minute.", &stamp[..10]));
+    }
+    Ok(())
+}
+
+/// The string value of one top-level key in a small JSON object (no dependency for one field).
+fn json_string(text: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{key}\"");
+    let at = text.find(&needle)? + needle.len();
+    let rest = text[at..].trim_start().strip_prefix(':')?.trim_start();
+    if rest.starts_with("null") { return None; }
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// "2026-11-13T22:45:00+00:00" (UTC) → seconds since 1970. Only the first 19 characters are read.
+fn unix_seconds(stamp: &str) -> Option<i64> {
+    let s = stamp.get(..19)?;
+    let (date, time) = s.split_once('T')?;
+    let mut d = date.split('-').map(|x| x.parse::<i64>().ok());
+    let (y, m, day) = (d.next()??, d.next()??, d.next()??);
+    let mut t = time.split(':').map(|x| x.parse::<i64>().ok());
+    let (h, mi, sec) = (t.next()??, t.next()??, t.next()??);
+    // days from civil (Howard Hinnant)
+    let (y2, m2) = if m <= 2 { (y - 1, m + 9) } else { (y, m - 3) };
+    let era = if y2 >= 0 { y2 } else { y2 - 399 } / 400;
+    let yoe = y2 - era * 400;
+    let doy = (153 * m2 + 2) / 5 + day - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146097 + doe - 719468;
+    Some(days * 86400 + h * 3600 + mi * 60 + sec)
+}
+
+#[cfg(test)]
+mod expiry_tests {
+    #[test]
+    fn dates() {
+        assert_eq!(super::unix_seconds("1970-01-02T00:00:00+00:00"), Some(86400));
+        assert_eq!(super::unix_seconds("2026-11-13T22:45:00+00:00"), Some(1794609900));
+        assert_eq!(super::json_string(r#"{"office": "X", "expires": "2026-11-13T22:45:00+00:00"}"#, "expires").as_deref(), Some("2026-11-13T22:45:00+00:00"));
+        assert_eq!(super::json_string(r#"{"expires": null}"#, "expires"), None);
+    }
+}

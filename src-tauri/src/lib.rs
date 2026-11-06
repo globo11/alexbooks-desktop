@@ -677,6 +677,25 @@ fn package_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<String> 
     args.into_iter().skip(1).find(|a| a.to_ascii_lowercase().ends_with(".abp") && Path::new(a).is_file())
 }
 
+/// 1.3.1: at a first start (no office saved yet), a package that was just downloaded — Downloads or the Desktop,
+/// newest .abp from the last week — is picked up by itself, so clicking the attachment before the installer works too.
+fn find_recent_package(app: &AppHandle) -> Option<String> {
+    let week = Duration::from_secs(7 * 86400);
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for dir in [app.path().download_dir().ok(), app.path().desktop_dir().ok()].into_iter().flatten() {
+        let Ok(rd) = fs::read_dir(&dir) else { continue };
+        for e in rd.flatten() {
+            let p = e.path();
+            if !p.extension().map(|x| x.eq_ignore_ascii_case("abp")).unwrap_or(false) { continue; }
+            let Ok(md) = e.metadata() else { continue };
+            let Ok(m) = md.modified() else { continue };
+            if m.elapsed().map(|age| age > week).unwrap_or(true) { continue; }
+            if best.as_ref().map(|(t, _)| m > *t).unwrap_or(true) { best = Some((m, p)); }
+        }
+    }
+    best.map(|(_, p)| p.to_string_lossy().to_string())
+}
+
 #[tauri::command]
 fn pending_package(pending: State<'_, PendingPackage>) -> Option<String> {
     pending.0.lock().ok().and_then(|mut p| p.take())
@@ -695,6 +714,7 @@ async fn install_package(app: AppHandle, path: String, passphrase: String) -> Re
     tauri::async_runtime::spawn_blocking(move || {
         let data = fs::read(&path).map_err(|e| format!("Could not read the file: {e}"))?;
         let zip_bytes = abp::open(&data, &passphrase)?;
+        abp::check_expiry(&zip_bytes)?;                           // 1.3.1: a week, then the package is dead
         let stem = Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "package".into());
         let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("packages").join(stem);
         let installer = abp::unpack(&zip_bytes, &dir)?;
@@ -820,6 +840,13 @@ pub fn run() {
             // longer pushed in the person's face mid-work; a small notice says it installs at the next start (once
             // per version), and Settings → Updates has the "restart now" link for whoever wants it today.
             // 1.0.1: the lock's heartbeat every two seconds, and a look for a "wake" from a second start every second
+            if read_config(app.handle()).server.is_empty() {
+                if let Some(st) = app.try_state::<PendingPackage>() {
+                    if let Ok(mut g) = st.0.lock() {
+                        if g.is_none() { *g = find_recent_package(app.handle()); }
+                    }
+                }
+            }
             let h_lock = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut n: u32 = 0;
