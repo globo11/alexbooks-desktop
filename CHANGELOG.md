@@ -1,5 +1,10 @@
 # What's new — AlexBooks for Windows
 
+## 1.2.1 — the new icon
+
+- The AlexBooks icon everywhere: the window, the taskbar, the Start menu, the installer and the start page.
+- Messages now point to Settings → Updates, where AlexBooks for Windows lives in the office app since AlexBooks 2.2.1.
+
 ## 1.2.0 — updates install by themselves
 
 - A newer AlexBooks for Windows no longer asks "Update now?". When this PC starts AlexBooks and the office server has a newer version, it shows **Updating…** with a turning ring, downloads it, restarts by itself, and opens the office. Nothing to click.

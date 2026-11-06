@@ -179,13 +179,13 @@
       return;
     }
     $("open-title").textContent = `Opening ${p.office}…`;
-    invoke("hello", { server: target.url }).catch(() => {});          // 0.3.1: this PC shows up under Settings → Install on a PC
+    invoke("hello", { server: target.url }).catch(() => {});          // 0.3.1: this PC shows up under Settings → Updates
     await updateStep(target.url, false, () => invoke("connect", { server: target.url, office: target.office }).catch(m => { $("open-status").hidden = true; setErr("open-err", typeof m === "string" ? m : "Could not open the server."); $("open-actions").hidden = false; }));
   }
 
   // ---------- update step ----------
   // 1.2.0: when the office server has a newer AlexBooks for Windows, it is installed right away — on a quiet start,
-  // from the menu, and from "Restart AlexBooks to update now" on Settings → Install on a PC (#apply). The person sees
+  // from the menu, and from "Restart AlexBooks to update now" on Settings → Updates (#apply). The person sees
   // "Updating…" with the turning ring and the program comes back by itself; there is no Update now to click.
   async function updateStep(url, verbose, next) {
     afterUpdate = next;
@@ -197,7 +197,7 @@
     if (!info) {
       if (verbose) {
         $("upd-status").hidden = true;
-        if (failed) { $("upd-title").textContent = "Could not check for updates"; setErr("upd-err", failed + " The office server fetches AlexBooks for Windows from GitHub under Settings → Install on a PC."); $("upd-done").hidden = false; }
+        if (failed) { $("upd-title").textContent = "Could not check for updates"; setErr("upd-err", failed + " The office server fetches AlexBooks for Windows from GitHub under Settings → Updates."); $("upd-done").hidden = false; }
         else { const v = await invoke("app_version").catch(() => ""); $("upd-title").textContent = "You have the latest version"; $("upd-found").hidden = false; $("upd-found-text").textContent = `AlexBooks for Windows ${v} is the version your office server has. Opening the office…`; setTimeout(() => afterUpdate && afterUpdate(), 1800); }
         return;
       }

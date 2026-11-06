@@ -316,7 +316,7 @@ fn probe_blocking(app: &AppHandle, server: &str) -> Probe {
     }
 }
 
-/// Tell the server this PC exists (name + launcher version), so Settings → Install on a PC lists it (0.3.1). Best effort.
+/// Tell the server this PC exists (name + launcher version), so Settings → Updates lists it (0.3.1). Best effort.
 #[tauri::command]
 async fn hello(app: AppHandle, server: String) -> bool {
     let version = app.package_info().version.to_string();
@@ -491,7 +491,7 @@ fn is_ours(app: &AppHandle, url: &url::Url) -> bool {
 }
 
 /// The one server address this window acts on instead of showing (1.2.0): `/desktop/apply-update`, the link behind
-/// "Restart AlexBooks to update now" on Settings → Install on a PC.
+/// "Restart AlexBooks to update now" on Settings → Updates.
 fn is_apply_update(url: &url::Url) -> bool {
     url.path().trim_end_matches('/') == "/desktop/apply-update"
 }
@@ -803,7 +803,7 @@ pub fn run() {
             // 0.3.1: while the window stays open for days, look for a newer launcher now and then (every hour since
             // 0.4.1 — the office fetches one and expects the PCs to follow the same day). 1.2.0: a newer one is no
             // longer pushed in the person's face mid-work; a small notice says it installs at the next start (once
-            // per version), and Settings → Install on a PC has the "restart now" link for whoever wants it today.
+            // per version), and Settings → Updates has the "restart now" link for whoever wants it today.
             // 1.0.1: the lock's heartbeat every two seconds, and a look for a "wake" from a second start every second
             let h_lock = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -836,7 +836,7 @@ pub fn run() {
                         if let Ok(Some(upd)) = updater.check().await {
                             if told_about != upd.version {
                                 told_about = upd.version.clone();
-                                page_notice(&handle, &format!("AlexBooks for Windows {} is ready — it installs by itself the next time AlexBooks starts. To do it now: Settings → Install on a PC → Restart AlexBooks to update now.", upd.version));
+                                page_notice(&handle, &format!("AlexBooks for Windows {} is ready — it installs by itself the next time AlexBooks starts. To do it now: Settings → Updates → Restart AlexBooks to update now.", upd.version));
                             }
                         }
                     }
@@ -874,7 +874,7 @@ pub fn run() {
                 })
                 .on_navigation(move |url| {
                     if is_apply_update(url) && is_ours(&h_nav, url) {
-                        // 1.2.0: "Restart AlexBooks to update now" on Settings → Install on a PC — the server's own
+                        // 1.2.0: "Restart AlexBooks to update now" on Settings → Updates — the server's own
                         // page only explains the link; this window runs the update screen instead
                         let h = h_nav.clone();
                         tauri::async_runtime::spawn(async move { let _ = show_start(&h, "apply"); });
