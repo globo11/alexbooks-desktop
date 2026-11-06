@@ -356,11 +356,9 @@ fn trust_ca_blocking(app: &AppHandle, server: &str) -> Result<String, String> {
     fs::write(&crt, &pem).map_err(|e| e.to_string())?;
     #[cfg(windows)]
     {
-        use std::os::windows::process::CommandExt;
-        let out = std::process::Command::new("certutil")
+        let out = quiet(std::process::Command::new("certutil"))
             .args(["-user", "-addstore", "Root"])
             .arg(&crt)
-            .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
             .output()
             .map_err(|e| format!("Could not run certutil: {e}"))?;
         if !out.status.success() {
@@ -457,7 +455,7 @@ fn show_download(path: &Path) {
         let r = if path.is_dir() {
             std::process::Command::new("explorer").arg(path).spawn()
         } else if is_pdf {
-            std::process::Command::new("cmd").args(["/C", "start", "", &path.to_string_lossy()]).spawn()
+            quiet(std::process::Command::new("cmd")).args(["/C", "start", "", &path.to_string_lossy()]).spawn()
         } else {
             std::process::Command::new("explorer").arg(format!("/select,{}", path.to_string_lossy())).spawn()
         };
@@ -473,7 +471,7 @@ fn show_download(path: &Path) {
 /// Open an address in the PC's own browser (GitHub, a bank's site, a mailto: link) — never inside this window.
 fn open_outside(url: &url::Url) {
     #[cfg(windows)]
-    let _ = std::process::Command::new("cmd").args(["/C", "start", "", url.as_str()]).spawn();
+    let _ = quiet(std::process::Command::new("cmd")).args(["/C", "start", "", url.as_str()]).spawn();
     #[cfg(not(windows))]
     let _ = std::process::Command::new("xdg-open").arg(url.as_str()).spawn();
 }
@@ -512,6 +510,18 @@ fn download_name(suggested: &Path, url: &url::Url) -> String {
         return from_suggested;
     }
     url.path_segments().and_then(|mut s| s.next_back()).filter(|n| !n.is_empty()).unwrap_or("download").to_string()
+}
+
+
+/// A console program (tasklist, taskkill, certutil, cmd /C start) run from a windowed app pops a black console
+/// window for a moment unless told not to (1.0.2): this is that telling. Returns the command for chaining.
+fn quiet(mut cmd: std::process::Command) -> std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000);                       // CREATE_NO_WINDOW
+    }
+    cmd
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -563,7 +573,7 @@ fn release_lock() {
 /// End a stuck AlexBooks window by its process id.
 fn end_process(pid: u32) {
     #[cfg(windows)]
-    let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).output();
+    let _ = quiet(std::process::Command::new("taskkill")).args(["/PID", &pid.to_string(), "/T", "/F"]).output();
     #[cfg(not(windows))]
     let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).output();
 }
@@ -573,7 +583,7 @@ fn end_process(pid: u32) {
 fn pid_running(pid: u32) -> bool {
     #[cfg(windows)]
     {
-        let out = std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"]).output();
+        let out = quiet(std::process::Command::new("tasklist")).args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"]).output();
         return out.map(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\""))).unwrap_or(true);
     }
     #[cfg(not(windows))]
@@ -588,25 +598,23 @@ fn claim_single_window() -> bool {
     if lock.pid == std::process::id() {
         return true;
     }
-    // the other window may be closing right now (an update restarts the program): give it a few seconds
-    for _ in 0..6 {
-        if !pid_running(lock.pid) {
-            write_lock();
-            return true;
-        }
-        if now_secs().saturating_sub(lock.alive_at) > STALE_AFTER {
-            break;
-        }
-        std::thread::sleep(Duration::from_millis(500));
-        match read_lock() {
-            Some(l) => lock = l,
-            None => { write_lock(); return true; }
-        }
+    if !pid_running(lock.pid) {
+        write_lock();                                          // gone without cleaning up: take over
+        return true;
     }
-    let age = now_secs().saturating_sub(lock.alive_at);
-    if age <= STALE_AFTER {
-        // alive and responsive: wake it and step aside
+    if now_secs().saturating_sub(lock.alive_at) <= STALE_AFTER {
+        // alive: wake it at once, then step aside — unless it is on its way out (an update restarts the program),
+        // in which case this start becomes the window
         let _ = fs::write(lock_dir().join(WAKE_NAME), b"wake");
+        for _ in 0..4 {
+            std::thread::sleep(Duration::from_millis(500));
+            match read_lock() {
+                None => { write_lock(); return true; }
+                Some(l) if l.pid != lock.pid => { lock = l; }
+                Some(_) if !pid_running(lock.pid) => { write_lock(); return true; }
+                Some(_) => {}
+            }
+        }
         return false;
     }
     // stuck: ask, then end it

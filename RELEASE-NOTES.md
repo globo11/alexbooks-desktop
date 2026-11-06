@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.0.1 — one window per PC: a second start brings the open window to the front; a stuck window can be closed and reopened from the icon; Restart AlexBooks in the menu.
+AlexBooks for Windows 1.0.2 — no black command windows flashing when AlexBooks is opened a second time (or when it opens a PDF or a link); the open window comes to the front at once.
