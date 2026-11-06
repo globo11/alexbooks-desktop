@@ -515,6 +515,136 @@ fn download_name(suggested: &Path, url: &url::Url) -> String {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// One AlexBooks window per PC (1.0.1)
+//
+// A second double-click used to open a second window. Now the first window keeps a small lock file with its process
+// id and a heartbeat it refreshes every two seconds; a second start reads it:
+//   - heartbeat fresh → the first window is alive: it is asked to come to the front (a "wake" file it watches),
+//     shows a note, and the second start quits;
+//   - heartbeat stale → the first window is stuck (hung, or gone without cleaning up): the person is asked whether
+//     to close it, it is ended, and this start carries on as the one window.
+// Nothing is lost either way: the books live on the server, and a form in progress is kept by the page's own
+// draft autosave and comes back when the page is opened again.
+
+const LOCK_NAME: &str = "alexbooks-window.lock";
+const WAKE_NAME: &str = "alexbooks-window.wake";
+const STALE_AFTER: u64 = 8;                                    // seconds without a heartbeat = stuck
+
+fn lock_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("AlexBooks")
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct WindowLock {
+    pid: u32,
+    alive_at: u64,
+}
+
+fn read_lock() -> Option<WindowLock> {
+    serde_json::from_str(&fs::read_to_string(lock_dir().join(LOCK_NAME)).ok()?).ok()
+}
+
+fn write_lock() {
+    let d = lock_dir();
+    let _ = fs::create_dir_all(&d);
+    let _ = fs::write(d.join(LOCK_NAME), serde_json::to_string(&WindowLock { pid: std::process::id(), alive_at: now_secs() }).unwrap_or_default());
+}
+
+fn release_lock() {
+    if read_lock().map(|l| l.pid == std::process::id()).unwrap_or(false) {
+        let _ = fs::remove_file(lock_dir().join(LOCK_NAME));
+    }
+}
+
+/// End a stuck AlexBooks window by its process id.
+fn end_process(pid: u32) {
+    #[cfg(windows)]
+    let _ = std::process::Command::new("taskkill").args(["/PID", &pid.to_string(), "/T", "/F"]).output();
+    #[cfg(not(windows))]
+    let _ = std::process::Command::new("kill").args(["-9", &pid.to_string()]).output();
+}
+
+/// Is a process with this id running? (A fresh heartbeat from a process that is gone — closed a second ago,
+/// or replaced by an update — must not keep a new start out.)
+fn pid_running(pid: u32) -> bool {
+    #[cfg(windows)]
+    {
+        let out = std::process::Command::new("tasklist").args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"]).output();
+        return out.map(|o| String::from_utf8_lossy(&o.stdout).contains(&format!("\"{pid}\""))).unwrap_or(true);
+    }
+    #[cfg(not(windows))]
+    {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+}
+
+/// Decide, before any window exists, whether this start may go on. Returns false when another window took over.
+fn claim_single_window() -> bool {
+    let Some(mut lock) = read_lock() else { write_lock(); return true; };
+    if lock.pid == std::process::id() {
+        return true;
+    }
+    // the other window may be closing right now (an update restarts the program): give it a few seconds
+    for _ in 0..6 {
+        if !pid_running(lock.pid) {
+            write_lock();
+            return true;
+        }
+        if now_secs().saturating_sub(lock.alive_at) > STALE_AFTER {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+        match read_lock() {
+            Some(l) => lock = l,
+            None => { write_lock(); return true; }
+        }
+    }
+    let age = now_secs().saturating_sub(lock.alive_at);
+    if age <= STALE_AFTER {
+        // alive and responsive: wake it and step aside
+        let _ = fs::write(lock_dir().join(WAKE_NAME), b"wake");
+        return false;
+    }
+    // stuck: ask, then end it
+    let answer = rfd::MessageDialog::new()
+        .set_title("AlexBooks is already open")
+        .set_description("AlexBooks is already open on this PC but is not responding (it may be hidden or frozen).\n\nClose it and open a fresh window? Nothing is lost: the books are on the office server, and a form you were in the middle of comes back from its draft.")
+        .set_buttons(rfd::MessageButtons::YesNo)
+        .set_level(rfd::MessageLevel::Warning)
+        .show();
+    if answer != rfd::MessageDialogResult::Yes {
+        return false;
+    }
+    end_process(lock.pid);
+    std::thread::sleep(Duration::from_millis(600));
+    write_lock();
+    true
+}
+
+/// Bring the window to the front: un-minimize, show, focus — also when it was hidden off every screen.
+fn surface(app: &AppHandle) {
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        let _ = w.set_focus();
+        if w.is_visible().unwrap_or(false) == false {
+            let _ = w.center();
+            let _ = w.show();
+        }
+    }
+}
+
+#[tauri::command]
+fn restart_app(app: AppHandle) {
+    release_lock();
+    app.restart();
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Self-update from the office server (0.3.0)
 
 #[derive(Debug, Clone, Serialize)]
@@ -575,12 +705,15 @@ async fn install_update(app: AppHandle, pending: State<'_, Pending>) -> Result<(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if !claim_single_window() {
+        return;                                                // another AlexBooks window is up and was told to come to the front
+    }
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Pending(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app
         ])
         .setup(|app| {
             let menu = Menu::with_items(
@@ -594,6 +727,7 @@ pub fn run() {
                         &MenuItem::with_id(app, "forward", "Forward", true, Some("Alt+Right"))?,
                         &MenuItem::with_id(app, "reload", "Reload", true, Some("F5"))?,
                         &MenuItem::with_id(app, "downloads", "Open the Downloads folder", true, None::<&str>)?,
+                        &MenuItem::with_id(app, "restart", "Restart AlexBooks", true, None::<&str>)?,
                         &PredefinedMenuItem::separator(app)?,
                         &MenuItem::with_id(app, "switch", "Connect to a different office…", true, None::<&str>)?,
                         &MenuItem::with_id(app, "update", "Check for updates…", true, None::<&str>)?,
@@ -610,6 +744,7 @@ pub fn run() {
                     "back" => app.get_webview_window("main").map(|w| w.eval("history.back()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
                     "forward" => app.get_webview_window("main").map(|w| w.eval("history.forward()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
                     "downloads" => { show_download(&downloads_dir(app)); Ok(()) }
+                    "restart" => { release_lock(); app.restart(); }
                     "switch" => show_start(app, "switch"),
                     "update" => show_start(app, "update"),
                     "about" => show_start(app, "about"),
@@ -619,6 +754,22 @@ pub fn run() {
             // 0.3.1: while the window stays open for days, look for a newer launcher now and then (every hour since
             // 0.4.1 — the office fetches one and expects the PCs to follow the same day); when there is one, show the
             // start page's update screen (it offers Update now / Not now and returns to the office).
+            // 1.0.1: the lock's heartbeat every two seconds, and a look for a "wake" from a second start every second
+            let h_lock = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut n: u32 = 0;
+                loop {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    n += 1;
+                    if n % 2 == 0 { write_lock(); }
+                    let wake = lock_dir().join(WAKE_NAME);
+                    if wake.exists() {
+                        let _ = fs::remove_file(&wake);
+                        surface(&h_lock);
+                        page_notice(&h_lock, "AlexBooks is already open — this is it.");
+                    }
+                }
+            });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -689,13 +840,41 @@ pub fn run() {
                 .build()?;
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running AlexBooks");
+        .build(tauri::generate_context!())
+        .expect("error while building AlexBooks")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                release_lock();                                // a clean close leaves no lock behind
+            }
+        });
 }
 
 #[cfg(test)]
 mod tests {
     use super::{download_name, normalize, parse_beacon, unique_path};
+
+    #[test]
+    fn one_window_per_pc() {
+        let dir = std::env::temp_dir().join(format!("alexbooks-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("LOCALAPPDATA", &dir);
+        assert!(super::claim_single_window());                                        // nobody: this start owns the window
+        assert_eq!(super::read_lock().unwrap().pid, std::process::id());
+        assert!(super::claim_single_window());                                        // our own lock: still fine
+        // another, live window (fresh heartbeat, process running): this start wakes it and steps aside
+        let mut child = std::process::Command::new(if cfg!(windows) { "timeout" } else { "sleep" }).arg(if cfg!(windows) { "20" } else { "20" }).spawn().unwrap();
+        let other = super::WindowLock { pid: child.id(), alive_at: super::now_secs() };
+        std::fs::write(super::lock_dir().join(super::LOCK_NAME), serde_json::to_string(&other).unwrap()).unwrap();
+        assert!(!super::claim_single_window());
+        assert!(super::lock_dir().join(super::WAKE_NAME).exists());
+        super::release_lock();                                                        // not ours: left alone
+        assert!(super::read_lock().is_some());
+        // the same lock once that process is gone (closed, or replaced by an update): this start takes over
+        let _ = child.kill(); let _ = child.wait();
+        assert!(super::claim_single_window());
+        assert_eq!(super::read_lock().unwrap().pid, std::process::id());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn downloads_get_a_name_and_never_overwrite() {
