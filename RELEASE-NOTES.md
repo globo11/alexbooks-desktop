@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.1.0 — Set up a new office from the package file the main office emails (.abp + passphrase); the installer runs here and the window opens the new office when it is done.
+AlexBooks for Windows 1.2.0 — A newer version installs by itself: an Updating… screen, a restart, and the office opens. No Update now button; Settings → Install on a PC can restart to update right away.

@@ -1,5 +1,11 @@
 # What's new — AlexBooks for Windows
 
+## 1.2.0 — updates install by themselves
+
+- A newer AlexBooks for Windows no longer asks "Update now?". When this PC starts AlexBooks and the office server has a newer version, it shows **Updating…** with a turning ring, downloads it, restarts by itself, and opens the office. Nothing to click.
+- While AlexBooks stays open, a newer version is no longer pushed into the middle of your work: a small notice says it installs at the next start (once per version).
+- **Restart AlexBooks to update now** on Settings → Install on a PC does it right away from inside the app.
+
 ## 1.1.0 — set up a new office from an emailed package
 
 - **Set up a new office** on the first screen: pick the `.abp` package file the main office emailed, type the passphrase from the same email, and the installer inside runs on this PC (Windows asks for permission once). When it finishes, this window opens the new office.

@@ -316,7 +316,7 @@ fn probe_blocking(app: &AppHandle, server: &str) -> Probe {
     }
 }
 
-/// Tell the server this PC exists (name + launcher version), so Settings → Other PCs lists it (0.3.1). Best effort.
+/// Tell the server this PC exists (name + launcher version), so Settings → Install on a PC lists it (0.3.1). Best effort.
 #[tauri::command]
 async fn hello(app: AppHandle, server: String) -> bool {
     let version = app.package_info().version.to_string();
@@ -488,6 +488,12 @@ fn is_ours(app: &AppHandle, url: &url::Url) -> bool {
         Ok(server) => server.host_str().map(|h| h.eq_ignore_ascii_case(&host)).unwrap_or(false),
         Err(_) => false,
     }
+}
+
+/// The one server address this window acts on instead of showing (1.2.0): `/desktop/apply-update`, the link behind
+/// "Restart AlexBooks to update now" on Settings → Install on a PC.
+fn is_apply_update(url: &url::Url) -> bool {
+    url.path().trim_end_matches('/') == "/desktop/apply-update"
 }
 
 /// A small message inside the page: the app shows it in its own style when it knows how (1.27.4), else a plain one.
@@ -795,8 +801,9 @@ pub fn run() {
                 };
             });
             // 0.3.1: while the window stays open for days, look for a newer launcher now and then (every hour since
-            // 0.4.1 — the office fetches one and expects the PCs to follow the same day); when there is one, show the
-            // start page's update screen (it offers Update now / Not now and returns to the office).
+            // 0.4.1 — the office fetches one and expects the PCs to follow the same day). 1.2.0: a newer one is no
+            // longer pushed in the person's face mid-work; a small notice says it installs at the next start (once
+            // per version), and Settings → Install on a PC has the "restart now" link for whoever wants it today.
             // 1.0.1: the lock's heartbeat every two seconds, and a look for a "wake" from a second start every second
             let h_lock = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -815,6 +822,7 @@ pub fn run() {
             });
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                let mut told_about = String::new();
                 loop {
                     tokio::time::sleep(Duration::from_secs(3600)).await;
                     let server = read_config(&handle).server;
@@ -825,8 +833,11 @@ pub fn run() {
                     let updater = handle.updater_builder().endpoints(vec![endpoint]).ok().map(|b| b.timeout(Duration::from_secs(10))
                         .configure_client(move |c| match &ca { Some(cert) => c.add_root_certificate(cert.clone()), None => c }).build().ok()).flatten();
                     if let Some(updater) = updater {
-                        if let Ok(Some(_)) = updater.check().await {
-                            let _ = show_start(&handle, "update");
+                        if let Ok(Some(upd)) = updater.check().await {
+                            if told_about != upd.version {
+                                told_about = upd.version.clone();
+                                page_notice(&handle, &format!("AlexBooks for Windows {} is ready — it installs by itself the next time AlexBooks starts. To do it now: Settings → Install on a PC → Restart AlexBooks to update now.", upd.version));
+                            }
                         }
                     }
                 }
@@ -862,7 +873,13 @@ pub fn run() {
                     true
                 })
                 .on_navigation(move |url| {
-                    if is_ours(&h_nav, url) || matches!(url.scheme(), "about" | "blob" | "data") {
+                    if is_apply_update(url) && is_ours(&h_nav, url) {
+                        // 1.2.0: "Restart AlexBooks to update now" on Settings → Install on a PC — the server's own
+                        // page only explains the link; this window runs the update screen instead
+                        let h = h_nav.clone();
+                        tauri::async_runtime::spawn(async move { let _ = show_start(&h, "apply"); });
+                        false
+                    } else if is_ours(&h_nav, url) || matches!(url.scheme(), "about" | "blob" | "data") {
                         true
                     } else {
                         open_outside(url);                      // github.com, mailto:, a bank — the PC's browser, not this window
@@ -894,7 +911,16 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{download_name, normalize, parse_beacon, unique_path};
+    use super::{download_name, is_apply_update, normalize, parse_beacon, unique_path};
+
+    #[test]
+    fn apply_update_link() {
+        let u = |s: &str| url::Url::parse(s).unwrap();
+        assert!(is_apply_update(&u("https://vm:8443/desktop/apply-update")));
+        assert!(is_apply_update(&u("https://192.168.1.117:8443/desktop/apply-update/")));
+        assert!(!is_apply_update(&u("https://vm:8443/desktop/latest.json")));
+        assert!(!is_apply_update(&u("https://vm:8443/admin/pcs")));
+    }
 
     #[test]
     fn one_window_per_pc() {
