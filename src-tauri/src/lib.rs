@@ -862,7 +862,11 @@ mod tests {
         assert_eq!(super::read_lock().unwrap().pid, std::process::id());
         assert!(super::claim_single_window());                                        // our own lock: still fine
         // another, live window (fresh heartbeat, process running): this start wakes it and steps aside
-        let mut child = std::process::Command::new(if cfg!(windows) { "timeout" } else { "sleep" }).arg(if cfg!(windows) { "20" } else { "20" }).spawn().unwrap();
+        let mut child = if cfg!(windows) {                                             // something that stays alive ~20 s
+            std::process::Command::new("ping").args(["-n", "20", "127.0.0.1"]).stdout(std::process::Stdio::null()).spawn().unwrap()
+        } else {
+            std::process::Command::new("sleep").arg("20").spawn().unwrap()
+        };
         let other = super::WindowLock { pid: child.id(), alive_at: super::now_secs() };
         std::fs::write(super::lock_dir().join(super::LOCK_NAME), serde_json::to_string(&other).unwrap()).unwrap();
         assert!(!super::claim_single_window());
