@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.0 — double-click the package
+
+- The `.abp` package from the new-office email now opens with a double-click: AlexBooks for Windows registers the file type when it installs, and opening the file lands straight on **Set up a new office** with the file already picked — only the passphrase to type. Works whether AlexBooks is closed or already open.
+
 ## 1.2.1 — the new icon
 
 - The AlexBooks icon everywhere: the window, the taskbar, the Start menu, the installer and the start page.

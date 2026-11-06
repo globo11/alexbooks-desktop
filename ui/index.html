@@ -119,7 +119,7 @@
   <!-- 2c. a new office from an emailed package -->
   <section id="s-package" hidden>
     <h1>Set up a new office</h1>
-    <p>Save the <b>.abp</b> file from the email somewhere on this PC, pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
+    <p id="pkg-intro">Open the <b>.abp</b> file from the email (double-click it) or pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
     <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8"></span></div>
     <form id="pkg-form" autocomplete="off" style="margin-top:10px">
       <label for="pkg-pass">Passphrase (from the email)</label>
@@ -265,10 +265,19 @@
   let pkgPath = "";
   $("c-package").addEventListener("click", () => { lastChoice = "s-package"; show("s-package"); $("pkg-status").hidden = true; setErr("pkg-err", ""); });
   $("pkg-back").addEventListener("click", showChoice);
+  function usePackage(p) { pkgPath = p; $("pkg-name").textContent = "✓ " + p.split(/[\\/]/).pop(); $("pkg-go").disabled = false; $("pkg-pass").focus(); }
   $("pkg-pick").addEventListener("click", async () => {
     const p = await invoke("pick_package").catch(() => null);
-    if (p) { pkgPath = p; $("pkg-name").textContent = p.split(/[\\/]/).pop(); $("pkg-go").disabled = false; $("pkg-pass").focus(); }
+    if (p) usePackage(p);
   });
+  // 1.3.0: the package was double-clicked (now, or while this window was open): straight to this screen, file in hand
+  async function packageFromOutside() {
+    const p = await invoke("pending_package").catch(() => null);
+    if (!p) return false;
+    lastChoice = "s-package"; show("s-package"); $("pkg-status").hidden = true; setErr("pkg-err", ""); usePackage(p);
+    $("pkg-intro").textContent = "The package from the email is open. Type the passphrase from the same email and click Install; Windows asks for permission once, and this window opens the new office when it is done.";
+    return true;
+  }
   $("pkg-form").addEventListener("submit", async (e) => {
     e.preventDefault(); setErr("pkg-err", "");
     const pass = $("pkg-pass").value.trim();
@@ -308,6 +317,7 @@
     saved = await invoke("get_server").catch(() => "");
     const mode = (location.hash || "").replace("#", "");
     if (mode === "about") return showAbout();
+    if (await packageFromOutside()) return;                     // 1.3.0: a double-clicked .abp beats everything else
     if ((mode === "update" || mode === "apply") && saved) { target = { url: saved }; return updateStep(saved, true, () => openServer(saved, false)); }
     if (mode === "switch" || !saved) { if (saved) $("server").value = saved.replace(/^https?:\/\//, "").replace(/:8443\/$/, "").replace(/\/$/, ""); return showChoice(); }
     openServer(saved, false);

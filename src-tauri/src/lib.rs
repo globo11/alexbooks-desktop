@@ -613,7 +613,7 @@ fn claim_single_window() -> bool {
     if now_secs().saturating_sub(lock.alive_at) <= STALE_AFTER {
         // alive: wake it at once, then step aside — unless it is on its way out (an update restarts the program),
         // in which case this start becomes the window
-        let _ = fs::write(lock_dir().join(WAKE_NAME), b"wake");
+        let _ = fs::write(lock_dir().join(WAKE_NAME), package_from_args(std::env::args()).unwrap_or_else(|| "wake".into()));
         for _ in 0..4 {
             std::thread::sleep(Duration::from_millis(500));
             match read_lock() {
@@ -667,6 +667,20 @@ fn restart_app(app: AppHandle) {
 // it through). On the PC that will be the office's server: pick the file, type the passphrase, and the installer
 // inside runs — the same `Install AlexBooks.cmd` as a hand-delivered package. When it finishes, the local server
 // appears on the "Just this PC" list and the window opens it.
+
+/// 1.3.0: double-clicking the .abp attachment opens AlexBooks for Windows with the file (the installer registers the
+/// file type). The path arrives as a command-line argument — here, or through the wake file when a window is already
+/// open — and waits in this state until the start page asks for it.
+pub struct PendingPackage(pub Mutex<Option<String>>);
+
+fn package_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<String> {
+    args.into_iter().skip(1).find(|a| a.to_ascii_lowercase().ends_with(".abp") && Path::new(a).is_file())
+}
+
+#[tauri::command]
+fn pending_package(pending: State<'_, PendingPackage>) -> Option<String> {
+    pending.0.lock().ok().and_then(|mut p| p.take())
+}
 
 #[tauri::command]
 async fn pick_package() -> Option<String> {
@@ -761,8 +775,9 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Pending(Mutex::new(None)))
+        .manage(PendingPackage(Mutex::new(package_from_args(std::env::args()))))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package
         ])
         .setup(|app| {
             let menu = Menu::with_items(
@@ -814,9 +829,16 @@ pub fn run() {
                     if n % 2 == 0 { write_lock(); }
                     let wake = lock_dir().join(WAKE_NAME);
                     if wake.exists() {
+                        let what = fs::read_to_string(&wake).unwrap_or_default();
                         let _ = fs::remove_file(&wake);
                         surface(&h_lock);
-                        page_notice(&h_lock, "AlexBooks is already open — this is it.");
+                        if what.trim().to_ascii_lowercase().ends_with(".abp") && Path::new(what.trim()).is_file() {
+                            // 1.3.0: a package was double-clicked while this window was open — go set that office up
+                            if let Some(p) = h_lock.try_state::<PendingPackage>() { if let Ok(mut g) = p.0.lock() { *g = Some(what.trim().to_string()); } }
+                            let _ = show_start(&h_lock, "package");
+                        } else {
+                            page_notice(&h_lock, "AlexBooks is already open — this is it.");
+                        }
                     }
                 }
             });
@@ -912,6 +934,20 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{download_name, is_apply_update, normalize, parse_beacon, unique_path};
+
+    #[test]
+    fn package_argument() {
+        let dir = std::env::temp_dir().join(format!("abp-arg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let f = dir.join("AlexBooks-Wendy.ABP");
+        std::fs::write(&f, b"ABP1").unwrap();
+        let fs_ = f.to_string_lossy().to_string();
+        assert_eq!(super::package_from_args(vec!["exe".into(), fs_.clone()]), Some(fs_.clone()));
+        assert_eq!(super::package_from_args(vec!["exe".into()]), None);
+        assert_eq!(super::package_from_args(vec!["exe".into(), "C:\\nope\\missing.abp".into()]), None);
+        assert_eq!(super::package_from_args(vec![fs_.clone()]), None, "the program's own path is never a package");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn apply_update_link() {
