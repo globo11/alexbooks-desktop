@@ -616,12 +616,13 @@ pub fn run() {
                     _ => Ok(()),
                 };
             });
-            // 0.3.1: while the window stays open for days, look for a newer launcher once a day; when there is one,
-            // show the start page's update screen (it offers Update now / Not now and returns to the office).
+            // 0.3.1: while the window stays open for days, look for a newer launcher now and then (every hour since
+            // 0.4.1 — the office fetches one and expects the PCs to follow the same day); when there is one, show the
+            // start page's update screen (it offers Update now / Not now and returns to the office).
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
-                    tokio::time::sleep(Duration::from_secs(24 * 3600)).await;
+                    tokio::time::sleep(Duration::from_secs(3600)).await;
                     let server = read_config(&handle).server;
                     if server.is_empty() { continue; }
                     let Ok(u) = normalize(&server) else { continue };

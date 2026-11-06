@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 0.4.1 — looks for a newer version every hour
+
+- While the window stays open, it checks the office server for a newer AlexBooks for Windows every hour (it was once a day), so a version the office fetched reaches every PC the same day without anyone closing and reopening the app. It still checks at every start.
+
 ## 0.4.0 — downloads you can see, links that open, drag-and-drop, back and zoom
 
 - **Downloads show themselves.** A browser has a download bar; this window had nothing, so a PDF or an office package landed in Downloads in silence and a click looked like it did nothing (and three clicks made three copies). Now a *Downloading…* note appears, then *Saved to Downloads: name* — and the file is shown: a PDF opens in the PC's PDF viewer, anything else (a package zip, a spreadsheet, a backup) is selected in an Explorer window. Same name again gets *(2)*, *(3)*, like a browser.
