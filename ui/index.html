@@ -95,6 +95,7 @@
     <p>You only answer this once. It can be changed later from the AlexBooks menu.</p>
     <a class="choice" id="c-local"><b>Just this PC</b><small>AlexBooks runs on this computer. One office, one computer — other PCs can join later.</small></a>
     <a class="choice" id="c-network"><b>Network</b><small>The office has a computer that runs AlexBooks (the server). This PC opens it.</small></a>
+    <a class="choice" id="c-package"><b>Set up a new office</b><small>You received an AlexBooks package by email (.abp). This PC becomes the office's server.</small></a>
     <div class="row" id="choice-cancel" hidden><button class="quiet" id="choice-back">← Keep the current office</button></div>
     <div class="foot">Nothing is stored on this PC but the address. The books stay where AlexBooks runs.</div>
   </section>
@@ -109,6 +110,20 @@
     </div>
     <div class="err" id="local-err"></div>
     <div class="row"><button class="quiet" id="local-back">← Back</button><span class="grow"></span><button id="local-retry" hidden>Try again</button></div>
+  </section>
+
+  <!-- 2c. a new office from an emailed package -->
+  <section id="s-package" hidden>
+    <h1>Set up a new office</h1>
+    <p>Save the <b>.abp</b> file from the email somewhere on this PC, pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
+    <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8"></span></div>
+    <form id="pkg-form" autocomplete="off" style="margin-top:10px">
+      <label for="pkg-pass">Passphrase (from the email)</label>
+      <input id="pkg-pass" placeholder="cedar-falcon-honey-42" spellcheck="false">
+      <div class="err" id="pkg-err"></div>
+      <div class="status" id="pkg-status" hidden><span class="spin"></span><span>Installing… the installer shows its own progress; this window opens AlexBooks when it is ready.</span></div>
+      <div class="row"><button type="button" class="quiet" id="pkg-back">← Back</button><span class="grow"></span><button type="submit" id="pkg-go" disabled>Install</button></div>
+    </form>
   </section>
 
   <!-- 2b. network -->
@@ -138,7 +153,7 @@
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
   const $ = (id) => document.getElementById(id);
-  const SECTIONS = ["s-open", "s-trust", "s-update", "s-choice", "s-local", "s-network", "s-about"];
+  const SECTIONS = ["s-open", "s-trust", "s-update", "s-choice", "s-local", "s-network", "s-package", "s-about"];
   const show = (id) => { for (const s of SECTIONS) $(s).hidden = s !== id; };
   const setErr = (id, m) => { const e = $(id); e.textContent = m || ""; e.classList.toggle("on", !!m); };
   let saved = "";                 // the server saved on this PC ("" on first run)
@@ -240,6 +255,31 @@
     else { $("net-none").hidden = false; $("server").focus(); }
   }
   $("c-local").addEventListener("click", () => { show("s-local"); checkLocal(); });
+  // ---------- a new office from an emailed package (1.1.0) ----------
+  let pkgPath = "";
+  $("c-package").addEventListener("click", () => { lastChoice = "s-package"; show("s-package"); $("pkg-status").hidden = true; setErr("pkg-err", ""); });
+  $("pkg-back").addEventListener("click", showChoice);
+  $("pkg-pick").addEventListener("click", async () => {
+    const p = await invoke("pick_package").catch(() => null);
+    if (p) { pkgPath = p; $("pkg-name").textContent = p.split(/[\\/]/).pop(); $("pkg-go").disabled = false; $("pkg-pass").focus(); }
+  });
+  $("pkg-form").addEventListener("submit", async (e) => {
+    e.preventDefault(); setErr("pkg-err", "");
+    const pass = $("pkg-pass").value.trim();
+    if (!pkgPath) { setErr("pkg-err", "Pick the package file first."); return; }
+    if (!pass) { setErr("pkg-err", "Type the passphrase from the email."); return; }
+    $("pkg-go").disabled = true;
+    try { await invoke("install_package", { path: pkgPath, passphrase: pass }); }
+    catch (m) { setErr("pkg-err", typeof m === "string" ? m : "The package could not be opened."); $("pkg-go").disabled = false; return; }
+    $("pkg-status").hidden = false;
+    // the installer runs on its own; look for the new server every few seconds, for up to 20 minutes
+    for (let i = 0; i < 240; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const f = await invoke("check_local").catch(() => null);
+      if (f) { openServer(f.url, true); return; }
+    }
+    $("pkg-status").hidden = true; setErr("pkg-err", "The installer has not finished yet. When it has, choose Just this PC."); $("pkg-go").disabled = false;
+  });
   $("c-network").addEventListener("click", () => { show("s-network"); search(); });
   $("choice-back").addEventListener("click", () => openServer(saved, false));
   $("local-back").addEventListener("click", showChoice);

@@ -17,6 +17,8 @@ use std::{fs, path::{Path, PathBuf}, sync::Mutex, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+mod abp;
+
 use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_updater::{Update, UpdaterExt};
@@ -653,6 +655,39 @@ fn restart_app(app: AppHandle) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
+// Set up a new office from an emailed package (1.1.0)
+//
+// The main office emails `AlexBooks-<office>.abp` (the install package sealed with a passphrase so mail scanners let
+// it through). On the PC that will be the office's server: pick the file, type the passphrase, and the installer
+// inside runs — the same `Install AlexBooks.cmd` as a hand-delivered package. When it finishes, the local server
+// appears on the "Just this PC" list and the window opens it.
+
+#[tauri::command]
+async fn pick_package() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new().add_filter("AlexBooks package", &["abp"]).set_title("Pick the package from the email").pick_file()
+            .map(|p| p.to_string_lossy().to_string())
+    }).await.ok().flatten()
+}
+
+#[tauri::command]
+async fn install_package(app: AppHandle, path: String, passphrase: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let data = fs::read(&path).map_err(|e| format!("Could not read the file: {e}"))?;
+        let zip_bytes = abp::open(&data, &passphrase)?;
+        let stem = Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "package".into());
+        let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("packages").join(stem);
+        let installer = abp::unpack(&zip_bytes, &dir)?;
+        // the .cmd asks Windows for elevation itself and shows its own progress window
+        #[cfg(windows)]
+        quiet(std::process::Command::new("cmd")).args(["/C", "start", "", &installer.to_string_lossy()]).spawn().map_err(|e| format!("Could not start the installer: {e}"))?;
+        #[cfg(not(windows))]
+        let _ = installer;
+        Ok(dir.to_string_lossy().to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+// ---------------------------------------------------------------------------------------------------------------
 // Self-update from the office server (0.3.0)
 
 #[derive(Debug, Clone, Serialize)]
@@ -721,7 +756,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Pending(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package
         ])
         .setup(|app| {
             let menu = Menu::with_items(

@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.0.2 — no black command windows flashing when AlexBooks is opened a second time (or when it opens a PDF or a link); the open window comes to the front at once.
+AlexBooks for Windows 1.1.0 — Set up a new office from the package file the main office emails (.abp + passphrase); the installer runs here and the window opens the new office when it is done.
