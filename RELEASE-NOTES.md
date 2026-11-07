@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.3.5 — A PC being set up again goes straight to the newly downloaded package; duplicate downloads ("(1).abp") are fine, the newest wins.
+AlexBooks for Windows 1.4.0 — Uninstalling AlexBooks from Windows also stops and removes the office server on a server PC, with nothing to type.

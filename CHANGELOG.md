@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.4.0 — one uninstall
+
+- Uninstalling **AlexBooks** from Windows → Installed apps now takes the office server with it on a server PC: the server is stopped, its startup task, icons and certificate removed, the app folder deleted — one Yes to Windows, nothing to type. The office's data folder is kept; the log on the Public desktop says where.
+
 ## 1.3.5 — setting a PC up again
 
 - A PC whose saved office no longer answers (removed, being set up again) and that has a just-downloaded package goes straight to Set up a new office with that package, instead of "Can't reach the office server — Try again".
