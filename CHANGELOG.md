@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.4 — one window, not two
+
+- A package installed from here tells the installer so, and the installer no longer opens a browser as well: the new office comes up in this window only.
+
 ## 1.3.3 — on the server PC itself
 
 - "Could not connect to localhost" on the very PC that runs the office: Windows answered "localhost" with an IPv6 address first and the program gave up where a browser quietly tries IPv4 next. It now goes to 127.0.0.1 for localhost.

@@ -729,7 +729,7 @@ async fn install_package(app: AppHandle, path: String, passphrase: String) -> Re
         let installer = abp::unpack(&zip_bytes, &dir)?;
         // the .cmd asks Windows for elevation itself and shows its own progress window
         #[cfg(windows)]
-        quiet(std::process::Command::new("cmd")).args(["/C", "start", "", &installer.to_string_lossy()]).spawn().map_err(|e| format!("Could not start the installer: {e}"))?;
+        quiet(std::process::Command::new("cmd")).env("ALEXBOOKS_LAUNCHER", "1").args(["/C", "start", "", &installer.to_string_lossy()]).spawn().map_err(|e| format!("Could not start the installer: {e}"))?;   // the installer then leaves the opening to this window
         #[cfg(not(windows))]
         let _ = installer;
         Ok(dir.to_string_lossy().to_string())

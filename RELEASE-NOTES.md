@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.3.3 — Fixes "Could not connect to localhost" on the server PC (IPv6 first); waits for a just-installed server to start.
+AlexBooks for Windows 1.3.4 — A package installed from here opens the new office in this window only (no browser alongside).

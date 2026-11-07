@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "alexbooks-desktop"
-version = "1.3.3"
+version = "1.3.4"
 dependencies = [
  "aes-gcm",
  "pbkdf2",
