@@ -1,5 +1,10 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.3 — on the server PC itself
+
+- "Could not connect to localhost" on the very PC that runs the office: Windows answered "localhost" with an IPv6 address first and the program gave up where a browser quietly tries IPv4 next. It now goes to 127.0.0.1 for localhost.
+- Right after a package install, the window waits for the new server to come up (up to a minute) instead of reporting it unreachable while it is still starting.
+
 ## 1.3.2 — when the package is missing
 
 - Set up a new office without a package on the PC says where it is: the attachment at the very bottom of the AlexBooks email — click it, come back, and it is picked up by itself (the screen looks again every time it opens).

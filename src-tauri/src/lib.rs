@@ -242,7 +242,10 @@ fn http_client(trust_any: bool, ca_pem: Option<&str>) -> reqwest::blocking::Clie
     let mut b = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(6))
         .redirect(reqwest::redirect::Policy::none())
-        .user_agent("AlexBooks-for-Windows");
+        .user_agent("AlexBooks-for-Windows")
+        // 1.3.3: "localhost" resolves to ::1 first on Windows while the office server listens on IPv4 only — the
+        // browser quietly falls back, this client did not ("Could not connect to localhost" on the server PC itself)
+        .resolve("localhost", std::net::SocketAddr::from(([127, 0, 0, 1], 0)));
     if trust_any {
         b = b.danger_accept_invalid_certs(true).danger_accept_invalid_hostnames(true);
     }

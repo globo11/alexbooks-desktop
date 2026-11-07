@@ -166,11 +166,16 @@
   let afterUpdate = null;         // what to do when the update step ends
 
   // ---------- opening a server: probe → trust → update → open ----------
-  async function openServer(url, fromChoice) {
+  async function openServer(url, fromChoice, waitTries) {
     target = { url, office: "", version: "" };
-    show("s-open"); $("open-title").textContent = "Opening AlexBooks…"; $("open-text").textContent = "Reaching the office server…";
+    show("s-open"); $("open-title").textContent = "Opening AlexBooks…"; $("open-text").textContent = waitTries ? "The office server was just installed — waiting for it to start…" : "Reaching the office server…";
     $("open-status").hidden = false; $("open-actions").hidden = true; setErr("open-err", "");
-    const p = await invoke("probe", { server: url }).catch(() => ({ status: "unreachable", message: "Something went wrong while reaching the server." }));
+    let p = await invoke("probe", { server: url }).catch(() => ({ status: "unreachable", message: "Something went wrong while reaching the server." }));
+    // 1.3.3: right after an install the server is still coming up (certificate, first start): keep knocking for a minute
+    for (let i = 0; i < (waitTries || 0) && p.status === "unreachable"; i++) {
+      await new Promise(r => setTimeout(r, 5000));
+      p = await invoke("probe", { server: url }).catch(() => ({ status: "unreachable", message: "" }));
+    }
     target.url = p.url || url; target.office = p.office || ""; target.version = p.version || "";
     if (p.status === "untrusted") { $("trust-text").textContent = `This PC has not been told to trust ${p.office || "the office server"}'s certificate yet. Without it, AlexBooks cannot open safely.`; setErr("trust-err", ""); show("s-trust"); return; }
     if (p.status !== "ok") {
@@ -297,7 +302,7 @@
     for (let i = 0; i < 240; i++) {
       await new Promise(r => setTimeout(r, 5000));
       const f = await invoke("check_local").catch(() => null);
-      if (f) { openServer(f.url, true); return; }
+      if (f) { openServer(f.url, true, 12); return; }
     }
     $("pkg-status").hidden = true; setErr("pkg-err", "The installer has not finished yet. When it has, choose Just this PC."); $("pkg-go").disabled = false;
   });
