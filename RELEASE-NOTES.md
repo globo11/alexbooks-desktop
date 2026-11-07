@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.3.4 — A package installed from here opens the new office in this window only (no browser alongside).
+AlexBooks for Windows 1.3.5 — A PC being set up again goes straight to the newly downloaded package; duplicate downloads ("(1).abp") are fine, the newest wins.

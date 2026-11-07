@@ -682,6 +682,8 @@ fn package_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<String> 
 
 /// 1.3.1: at a first start (no office saved yet), a package that was just downloaded — Downloads or the Desktop,
 /// newest .abp from the last week — is picked up by itself, so clicking the attachment before the installer works too.
+/// The NAME does not matter ("… (1).abp", "… (3).abp" from downloading the attachment several times are all fine):
+/// the newest by date wins, which is the one just downloaded.
 fn find_recent_package(app: &AppHandle) -> Option<String> {
     let week = Duration::from_secs(7 * 86400);
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;

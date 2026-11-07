@@ -1,5 +1,10 @@
 # What's new — AlexBooks for Windows
 
+## 1.3.5 — setting a PC up again
+
+- A PC whose saved office no longer answers (removed, being set up again) and that has a just-downloaded package goes straight to Set up a new office with that package, instead of "Can't reach the office server — Try again".
+- Downloaded the attachment three times? The newest .abp on the PC is the one picked, whatever Windows named it ("… (2).abp" is fine).
+
 ## 1.3.4 — one window, not two
 
 - A package installed from here tells the installer so, and the installer no longer opens a browser as well: the new office comes up in this window only.
