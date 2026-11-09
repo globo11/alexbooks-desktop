@@ -43,8 +43,14 @@ pub fn label(data: &[u8]) -> Result<Label, String> {
     split(data).map(|(_, l, _)| l)
 }
 
+/// Lower-case, dashes as spaces, single spaces — and (1.4.3) accents dropped with the same table as app/abp.py,
+/// so a passphrase a translator or a keyboard decorated ("área") still matches.
 fn normalize(passphrase: &str) -> String {
-    passphrase.to_lowercase().replace('-', " ").split_whitespace().collect::<Vec<_>>().join(" ")
+    let plain: String = passphrase.to_lowercase().chars().map(|c| match c {
+        'á' | 'à' | 'ä' | 'â' | 'ã' => 'a', 'é' | 'è' | 'ë' | 'ê' => 'e', 'í' | 'ì' | 'ï' | 'î' => 'i',
+        'ó' | 'ò' | 'ö' | 'ô' | 'õ' => 'o', 'ú' | 'ù' | 'ü' | 'û' => 'u', 'ñ' => 'n', 'ç' => 'c', _ => c,
+    }).collect();
+    plain.replace('-', " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn open(data: &[u8], passphrase: &str) -> Result<Vec<u8>, String> {
@@ -106,6 +112,7 @@ mod tests {
         let hex = include_str!("../tests/sample.abp.hex").trim();
         let data: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
         assert_eq!(open(&data, "Cedar Falcon Honey 42").unwrap(), b"PK zip");
+        assert_eq!(open(&data, "cédar falcón hóney 42").unwrap(), b"PK zip", "accents a translator added are ignored");
         assert!(open(&data, "cedar-falcon-honey-41").is_err());
         assert!(open(b"PK\x03\x04", "x").is_err());
     }

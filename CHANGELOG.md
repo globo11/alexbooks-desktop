@@ -1,7 +1,8 @@
 # What's new — AlexBooks for Windows
 
-## 1.4.2 — the right passphrase for the right file
+## 1.4.3 — the right passphrase for the right file
 
+- A passphrase typed with accents (or changed by an email translator) still matches.
 - *Set up a new office* names the package it found — office, license code and build time — and the email that carries its passphrase says the same, so a laptop with two AlexBooks emails cannot pair the wrong passphrase with the wrong file. A wrong passphrase now says which package the file is.
 
 ## 1.4.1 — one uninstall, and a steady hello
