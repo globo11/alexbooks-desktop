@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.4.1 — still here
+
+- This PC says hello to the office server every hour while AlexBooks is open, not only on start — so the "last active" time HQ shows for each workstation means active, not "opened on Monday".
+
 ## 1.4.0 — one uninstall
 
 - Uninstalling **AlexBooks** from Windows → Installed apps now takes the office server with it on a server PC: the server is stopped, its startup task, icons and certificate removed, the app folder deleted — one Yes to Windows, nothing to type. The office's data folder is kept; the log on the Public desktop says where.

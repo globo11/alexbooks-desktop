@@ -192,7 +192,16 @@
     }
     $("open-title").textContent = `Opening ${p.office}…`;
     invoke("hello", { server: target.url }).catch(() => {});          // 0.3.1: this PC shows up under Settings → Updates
+    sayHelloHourly(target.url);                                        // 1.4.1: and keeps showing as "active" while the window is open
     await updateStep(target.url, false, () => invoke("connect", { server: target.url, office: target.office }).catch(m => { $("open-status").hidden = true; setErr("open-err", typeof m === "string" ? m : "Could not open the server."); $("open-actions").hidden = false; }));
+  }
+
+  // 1.4.1: a hello on every start told the office server (and HQ) when this PC last *opened* AlexBooks; a window left
+  // open all week read as Monday. One more hello every hour while open makes "last active" mean what it says.
+  let helloTimer = null;
+  function sayHelloHourly(url) {
+    if (helloTimer) clearInterval(helloTimer);
+    helloTimer = setInterval(() => invoke("hello", { server: url }).catch(() => {}), 60 * 60 * 1000);
   }
 
   // ---------- update step ----------
