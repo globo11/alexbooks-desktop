@@ -121,7 +121,7 @@
     <h1>Set up a new office</h1>
     <p id="pkg-intro">Open the <b>.abp</b> file from the email (double-click it) or pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
     <div class="note" id="pkg-missing">No package on this PC yet. Go back to the email from AlexBooks: the package is the <b>attachment at the very bottom</b> of it (the .abp file). Click it so it downloads, then come back here — the file is picked up by itself, or use <i>Pick the package file…</i> to find it in Downloads.</div>
-    <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8"></span></div>
+    <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8;white-space:pre-line"></span></div>
     <form id="pkg-form" autocomplete="off" style="margin-top:10px">
       <label for="pkg-pass">Passphrase (from the email)</label>
       <input id="pkg-pass" placeholder="cedar-falcon-honey-42" spellcheck="false">
@@ -291,7 +291,13 @@
     $("pkg-missing").hidden = !!pkgPath;
   });
   $("pkg-back").addEventListener("click", showChoice);
-  function usePackage(p) { pkgPath = p; $("pkg-name").textContent = "✓ " + p.split(/[\\/]/).pop() + "  (the newest package on this PC)"; $("pkg-go").disabled = false; $("pkg-missing").hidden = true; $("pkg-pass").focus(); }
+  function usePackage(p) {
+    pkgPath = p; $("pkg-name").textContent = "✓ " + p.split(/[\\/]/).pop() + "  (the newest package on this PC)"; $("pkg-go").disabled = false; $("pkg-missing").hidden = true; $("pkg-pass").focus();
+    // 1.4.2: say which package this file is, so it can be matched to the email that holds its passphrase
+    invoke("package_label", { path: p }).then(l => {
+      if (l && l.license) $("pkg-name").textContent += "\n" + "This package: " + (l.office ? l.office + " · " : "") + l.license + (l.built ? " · built " + l.built.replace("T", " ") : "") + " — use the passphrase from the email that names " + l.license + ".";
+    }).catch(() => {});
+  }
   $("pkg-pick").addEventListener("click", async () => {
     const p = await invoke("pick_package").catch(() => null);
     if (p) usePackage(p);

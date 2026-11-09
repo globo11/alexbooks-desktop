@@ -707,6 +707,17 @@ fn recent_package(app: AppHandle) -> Option<String> {
     find_recent_package(&app)
 }
 
+/// 1.4.2: what a package file says about itself (office, license code, build time), shown next to the passphrase box.
+#[tauri::command]
+async fn package_label(path: String) -> Result<abp::Label, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let data = fs::read(&path).map_err(|e| format!("Could not read the package: {e}"))?;
+        abp::label(&data)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 fn pending_package(pending: State<'_, PendingPackage>) -> Option<String> {
     pending.0.lock().ok().and_then(|mut p| p.take())
@@ -808,7 +819,7 @@ pub fn run() {
         .manage(Pending(Mutex::new(None)))
         .manage(PendingPackage(Mutex::new(package_from_args(std::env::args()))))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package, package_label
         ])
         .setup(|app| {
             let menu = Menu::with_items(

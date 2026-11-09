@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.4.1 — This PC says hello to the office server every hour while open, so HQ shows when each workstation was last active, not just opened.
+AlexBooks for Windows 1.4.2 — Set up a new office names the package (license code, build time) so its passphrase comes from the right email.

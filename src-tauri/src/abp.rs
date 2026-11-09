@@ -2,7 +2,9 @@
 //!
 //! Same layout as `app/abp.py` on the server: `ABP1` · 16-byte salt · 12-byte nonce · AES-256-GCM ciphertext of the
 //! zip, key = PBKDF2-HMAC-SHA256(passphrase lower-cased with single spaces, salt, 200 000 rounds), the magic as
-//! associated data. Keep the two in step.
+//! associated data. `ABP2` (1.4.2 / AlexBooks 2.4.9) puts a readable label first — 2-byte length + JSON
+//! {"office","license","built"} — bound into the ciphertext as associated data, so the screen can say which package
+//! a file is before the passphrase is typed. Keep the two in step.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -10,23 +12,60 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 const MAGIC: &[u8] = b"ABP1";
+const MAGIC2: &[u8] = b"ABP2";
 const ROUNDS: u32 = 200_000;
+
+/// What an ABP2 file says about itself (empty strings for an ABP1 file).
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct Label {
+    #[serde(default)] pub office: String,
+    #[serde(default)] pub license: String,
+    #[serde(default)] pub built: String,
+}
+
+/// (associated data, label, the bytes from the salt on) for either layout.
+fn split(data: &[u8]) -> Result<(&[u8], Label, &[u8]), String> {
+    let bad = || "That is not an AlexBooks package file (.abp).".to_string();
+    if data.len() >= 6 && &data[..4] == MAGIC2 {
+        let n = u16::from_be_bytes([data[4], data[5]]) as usize;
+        if data.len() < 6 + n { return Err(bad()); }
+        let label: Label = serde_json::from_slice(&data[6..6 + n]).map_err(|_| bad())?;
+        return Ok((&data[..6 + n], label, &data[6 + n..]));
+    }
+    if data.len() >= 4 && &data[..4] == MAGIC {
+        return Ok((MAGIC, Label::default(), &data[4..]));
+    }
+    Err(bad())
+}
+
+/// The label of a sealed file, readable without the passphrase (all-empty for an older file).
+pub fn label(data: &[u8]) -> Result<Label, String> {
+    split(data).map(|(_, l, _)| l)
+}
 
 fn normalize(passphrase: &str) -> String {
     passphrase.to_lowercase().replace('-', " ").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 pub fn open(data: &[u8], passphrase: &str) -> Result<Vec<u8>, String> {
-    if data.len() < 4 + 16 + 12 + 16 || &data[..4] != MAGIC {
+    let (aad, lbl, rest) = split(data)?;
+    if rest.len() < 16 + 12 + 16 {
         return Err("That is not an AlexBooks package file (.abp).".into());
     }
-    let (salt, nonce, ct) = (&data[4..20], &data[20..32], &data[32..]);
+    let (salt, nonce, ct) = (&rest[..16], &rest[16..28], &rest[28..]);
     let mut key = [0u8; 32];
     pbkdf2::pbkdf2_hmac::<sha2::Sha256>(normalize(passphrase).as_bytes(), salt, ROUNDS, &mut key);
     let cipher = Aes256Gcm::new_from_slice(&key).map_err(|e| e.to_string())?;
     cipher
-        .decrypt(Nonce::from_slice(nonce), Payload { msg: ct, aad: MAGIC })
-        .map_err(|_| "Wrong passphrase — check the email and type it exactly (dashes or spaces are fine).".into())
+        .decrypt(Nonce::from_slice(nonce), Payload { msg: ct, aad })
+        .map_err(|_| {
+            if lbl.license.is_empty() {
+                "Wrong passphrase — check the email and type it exactly (dashes or spaces are fine).".to_string()
+            } else {
+                format!("Wrong passphrase for this package ({}{}). Use the passphrase from the email that names {} — an older AlexBooks email's passphrase will not open this file. Dashes or spaces are fine.",
+                        lbl.license, if lbl.built.is_empty() { String::new() } else { format!(", built {}", lbl.built) }, lbl.license)
+            }
+        })
 }
 
 /// Unpack the zip into `dir` and return the path of `Install AlexBooks.cmd` inside it. Paths that try to climb out
@@ -69,6 +108,19 @@ mod tests {
         assert_eq!(open(&data, "Cedar Falcon Honey 42").unwrap(), b"PK zip");
         assert!(open(&data, "cedar-falcon-honey-41").is_err());
         assert!(open(b"PK\x03\x04", "x").is_err());
+    }
+
+    #[test]
+    fn reads_the_label_of_an_abp2_and_opens_it() {
+        // Sealed by app/abp.py 2.4.9 with passphrase "cedar-falcon-honey-42", label office/AB-0007/2026-11-09T10:52, around b"PK zip".
+        let hex = include_str!("../tests/sample2.abp.hex").trim();
+        let data: Vec<u8> = (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap()).collect();
+        let l = label(&data).unwrap();
+        assert_eq!((l.office.as_str(), l.license.as_str(), l.built.as_str()), ("Nelcida Tax (Nelcida Perez)", "AB-0007", "2026-11-09T10:52"));
+        assert_eq!(open(&data, "cedar falcon honey 42").unwrap(), b"PK zip");
+        let err = open(&data, "cedar-falcon-honey-41").unwrap_err();
+        assert!(err.contains("AB-0007") && err.contains("2026-11-09T10:52"));
+        assert_eq!(label(b"ABP1xxxx").unwrap(), Label::default());
     }
 }
 

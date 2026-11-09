@@ -1,6 +1,6 @@
 [package]
 name = "alexbooks-desktop"
-version = "1.4.1"
+version = "1.4.2"
 description = "AlexBooks for Windows — the office's own window onto the AlexBooks server"
 authors = ["Alex Tax Services Corp"]
 edition = "2021"

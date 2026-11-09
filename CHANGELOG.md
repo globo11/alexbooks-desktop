@@ -1,5 +1,9 @@
 # What's new — AlexBooks for Windows
 
+## 1.4.2 — the right passphrase for the right file
+
+- *Set up a new office* names the package it found — office, license code and build time — and the email that carries its passphrase says the same, so a laptop with two AlexBooks emails cannot pair the wrong passphrase with the wrong file. A wrong passphrase now says which package the file is.
+
 ## 1.4.1 — one uninstall, and a steady hello
 
 - **Uninstalling AlexBooks** from Windows → Installed apps on the server PC also stops and removes the office server — one Yes to Windows, nothing to type. The office's data folder is kept.
