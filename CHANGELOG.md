@@ -1,5 +1,13 @@
 # What's new — AlexBooks for Windows
 
+## 1.5.0 — a program, not a browser
+
+- **Right-click** shows only what a text box needs — Undo, Redo, Cut, Copy, Paste, Select all — and nothing at all on the rest of a page. The browser's own entries (Back, Refresh, Save as, Print, Inspect) are gone.
+- **No browser pop-ups**: no offer to translate the page, no downloads panel on Ctrl+J, no "caret browsing" question on F7.
+- **Less goes to Microsoft**: the page engine's address check (SmartScreen) is off, and if the engine ever crashes, its report stays on this PC instead of being sent to Microsoft.
+- Still there, because offices use them: Ctrl+F to find on the page, Ctrl+P to print it, Ctrl + and Ctrl − for the text size. The AlexBooks menu has *Text back to normal size* for when the size was changed by accident.
+- Nothing to install by hand: each PC picks this up the next time AlexBooks is opened.
+
 ## 1.4.3 — the right passphrase for the right file
 
 - A passphrase typed with accents (or changed by an email translator) still matches.

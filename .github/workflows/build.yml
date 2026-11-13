@@ -2,11 +2,13 @@
 #  - every push to main: builds the installer, then publishes (or refreshes) the GitHub Release named after the
 #    version in src-tauri/tauri.conf.json, with AlexBooks-Setup.exe and its .sig attached (the AlexBooks server
 #    fetches both and the program on each PC updates itself from the server). Bumping the version = a new release.
+#  - before the Release: the window check (ci/) starts the built program on this machine and fails the build when
+#    its window does not open the office.
 #  - needs the repo secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
 name: build
 on:
   push:
-    branches: [main]
+    branches: [main, "test/**"]                                        # test/…: build and check, never a Release
     paths-ignore: ["CHANGELOG.md", "README.md", "RELEASE-NOTES.md"]   # notes alone do not rebuild the installer
   workflow_dispatch:
 permissions:
@@ -44,6 +46,29 @@ jobs:
         with:
           name: AlexBooks-Setup
           path: out/AlexBooks-Setup.exe*
+      # 1.5.0: start what was just built and look at it (ci/window-check.ps1). A build whose window does not open -
+      # on a clean start, or beside the previous version, which is what an update is - is not released: the offices'
+      # PCs install a Release by themselves, so a broken one would reach every desk.
+      - name: Install the previous release (for the "moment after an update" check)
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download -R ${{ github.repository }} -p AlexBooks-Setup.exe -D previous
+          Start-Process previous\AlexBooks-Setup.exe -ArgumentList '/S' -Wait
+          Get-ChildItem "$env:LOCALAPPDATA\AlexBooks" | Select-Object Name, Length
+      - name: Window check
+        shell: powershell
+        run: |
+          $new = Get-ChildItem src-tauri\target\release\*.exe | Select-Object -First 1
+          $old = Get-ChildItem "$env:LOCALAPPDATA\AlexBooks" -Filter *.exe | Where-Object { $_.Name -notmatch 'unins' } | Select-Object -First 1
+          Write-Host "new: $($new.FullName)   previous: $($old.FullName)"
+          .\ci\window-check.ps1 -Exe $new.FullName -Out window-check -OldExe $old.FullName
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: window-check
+          path: window-check
       - name: Read the version
         id: ver
         shell: pwsh

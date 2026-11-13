@@ -18,7 +18,26 @@ The office's own window onto the AlexBooks server. The books, the files and the 
 
 The installer and its updater signature are built with the project's signing key: the repo secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (the public half is in `tauri.conf.json`). The AlexBooks server fetches each Release (Settings → Install on a PC) and hands it to the office PCs, which update themselves from the server.
 
-Release: bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`, add the entry to `CHANGELOG.md`, write `RELEASE-NOTES.md`, commit and push `main`. The workflow creates the tag and the Release itself.
+Release: bump the version in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml`, `package.json` and `package-lock.json`, add the entry to `CHANGELOG.md`, write `RELEASE-NOTES.md`, commit and push `main`. The workflow creates the tag and the Release itself.
+
+## What is switched off in the engine (1.5.0)
+
+WebView2 is a browser's engine and brings a browser's habits. `src-tauri/src/engine.rs` is the one place that says what this program switches off, and why:
+
+| | How |
+|---|---|
+| The right-click menu keeps Undo / Redo / Cut / Copy / Paste / Select all, and does not appear where that leaves nothing | `ContextMenuRequested` |
+| Ctrl+J (downloads panel), F7 (caret browsing), Ctrl+U (view source), F12 and Ctrl+Shift+I/J/C do nothing | `AcceleratorKeyPressed` — an exact list; AltGr combinations are never touched |
+| No translation offer, no SmartScreen | engine switches (`ENGINE_ARGS`) and `IsReputationCheckingRequired` |
+| A crash report of the engine stays on the PC | the program starts the engine itself with `IsCustomCrashReportingEnabled` (the toolkit has no setting for it) |
+
+Left on, on purpose: Ctrl+F, Ctrl+P, the text size keys, F5, Alt+Left / Alt+Right. What Windows itself collects about the engine ("required diagnostic data") is not a program's to switch off.
+
+The engine refuses a start whose settings differ from one still running in the same folder — the previous version's, for a moment after an update. So the window tries its own start three times, a second apart, and then opens the toolkit's way, exactly as 1.4 did; the next start gets it right. `%LOCALAPPDATA%\AlexBooks\engine.txt` says what the last start managed; with `ALEXBOOKS_ENGINE_LOG=1` set it also lists each right-click menu the engine offered and each key kept from it.
+
+## The window check
+
+`ci/window-check.ps1` runs in the build, before the Release: it starts the built program on GitHub's Windows machine against a stand-in office (`ci/office.py`), checks that the window opens it — on a clean start, beside the previous release (the update moment), and on the start after — that the keys above no longer reach the engine while Ctrl+F still does, that a second window opens, and saves screenshots of every right-click and key as the `window-check` artifact. A build that fails it is not released, because the offices' PCs install a Release by themselves.
 
 ## What is on the PC
 
