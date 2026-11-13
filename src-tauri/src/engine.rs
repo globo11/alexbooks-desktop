@@ -120,6 +120,7 @@ mod win {
     };
     use windows::core::{Interface, HSTRING, PCWSTR, PWSTR};
     use windows::Win32::Foundation::{E_POINTER, E_UNEXPECTED};
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED};
     use windows::Win32::Globalization::{GetUserDefaultUILanguage, LCIDToLocaleName, LOCALE_ALLOW_NEUTRAL_NAMES, MAX_LOCALE_NAME};
     use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
 
@@ -131,6 +132,9 @@ mod win {
         let options = CoreWebView2EnvironmentOptions::default();
         let (tx, rx) = mpsc::channel();
         unsafe {
+            // the engine is reached through COM, which a thread must switch on before first use; the toolkit does
+            // the same before its own start (a second switching-on is harmless)
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
             options.set_additional_browser_arguments(ENGINE_ARGS.to_string());
             options.set_is_custom_crash_reporting_enabled(true);
             options.set_are_browser_extensions_enabled(false);

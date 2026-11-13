@@ -98,7 +98,7 @@ function Front($proc) {
     for ($i = 0; $i -lt 40 -and $h -eq [IntPtr]::Zero; $i++) { $proc.Refresh(); $h = $proc.MainWindowHandle; if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 } }
     if ($h -eq [IntPtr]::Zero) { return $null }
     [Win]::ShowWindow($h, 9) | Out-Null
-    [Win]::MoveWindow($h, 20, 20, 1280, 860, $true) | Out-Null
+    [Win]::MoveWindow($h, 0, 0, 1000, 720, $true) | Out-Null
     [Win]::SetForegroundWindow($h) | Out-Null
     Start-Sleep -Milliseconds 800
     $p = New-Object 'Win+Pt'
@@ -139,11 +139,11 @@ try {
         Problem "clean start: the window did not open the office within 2 minutes"
     } else {
         $note = Engine-Note
-        if ($note -notmatch 'started by AlexBooks') { Problem "clean start: the engine was not started by AlexBooks: $note" }
+        if ($note -notmatch 'engine: started by AlexBooks') { Problem "clean start: the engine was not started by AlexBooks: $note" }
         if ($note -notmatch 'right-click menu trimmed') { Problem "clean start: the right-click menu was not wired" }
         if ($note -notmatch 'browser-only keys off') { Problem "clean start: the keys were not wired" }
         if ($note -notmatch 'no SmartScreen check') { Problem "clean start: the SmartScreen setting was not applied" }
-        $eng = Engines
+        $eng = @(Engines)
         if ($eng.Count -lt 1) { Problem "clean start: no engine process found for AlexBooks' folder" }
         else {
             $cl = $eng[0].CommandLine
@@ -158,17 +158,17 @@ try {
         else {
             Start-Sleep -Seconds 4                      # time for a translation offer to appear, if one would
             Shot "1-page"
-            Click $o 1050 520                           # an empty part of the page: gives the page the keyboard
-            Click $o 1050 520 -Right; Shot "2-rightclick-empty"; Keys "{ESC}" 500
+            Click $o 930 320                           # an empty part of the page: gives the page the keyboard
+            Click $o 930 320 -Right; Shot "2-rightclick-empty"; Keys "{ESC}" 500
             Click $o 200 282; Click $o 200 282 -Right; Shot "3-rightclick-textbox"; Keys "{ESC}" 500
             Click $o 300 130 -Double; Click $o 300 130 -Right; Shot "4-rightclick-selected-text"; Keys "{ESC}" 500
-            Click $o 1050 520
+            Click $o 930 320
             Keys "x"
             Keys "^j" 1500; Shot "5-ctrl-j"
             Keys "{F7}" 1500; Shot "6-f7"; Keys "{ESC}" 500
             Keys "^u" 1500; Shot "7-ctrl-u"
             Keys "^f" 1500; Shot "8-ctrl-f"; Keys "{ESC}" 500
-            Click $o 1050 520
+            Click $o 930 320
             if ((Log-Count '^key x$') -ge 1) {
                 if ((Log-Count '^key ctrl\+j$') -ne 0) { Problem "Ctrl+J still reaches the engine" }
                 if ((Log-Count '^key f7$') -ne 0) { Problem "F7 still reaches the engine" }
@@ -186,7 +186,7 @@ try {
             } else { Shot "9-second-window-missing"; Problem "a link that opens a second window did not open one" }
 
             $o = Front $app
-            if ($null -ne $o) { Click $o 1050 520; Keys "^p" 4000; Shot "10-ctrl-p"; Keys "{ESC}" 1500 }
+            if ($null -ne $o) { Click $o 930 320; Keys "^p" 4000; Shot "10-ctrl-p"; Keys "{ESC}" 1500 }
         }
         $app.Refresh()
         if ($app.HasExited) { Problem "clean start: the program ended by itself (exit code $($app.ExitCode))" }
@@ -206,13 +206,14 @@ try {
         if (-not (Wait-Log '^loaded .*AlexBooksDesktop/' 1 120)) { Shot "20-old-did-not-open"; Say "the older version did not open - this part is not conclusive" }
         else {
             $oo = Front $old
-            if ($null -ne $oo) { Start-Sleep -Seconds 4; Shot "20-old-page"; Click $oo 1050 520; Click $oo 1050 520 -Right; Shot "21-old-rightclick-empty"; Keys "{ESC}" 500 }
-            foreach ($e in (Engines)) { Say ("older engine: " + $e.CommandLine) }
+            if ($null -ne $oo) { Start-Sleep -Seconds 4; Shot "20-old-page"; Click $oo 930 320; Click $oo 930 320 -Right; Shot "21-old-rightclick-empty"; Keys "{ESC}" 500 }
+            foreach ($e in @(Engines)) { Say ("older engine: " + $e.CommandLine) }
             $before = Log-Count '^loaded '
             $new = Start-App $Exe @{ ALEXBOOKS_ENGINE_LOG = "1" }
             if (Wait-Log '^loaded ' ($before + 1) 120) {
                 Say "the new version opened beside the older one"
                 $n2 = Front $new; Start-Sleep -Seconds 1; Shot "22-new-beside-old"
+                foreach ($e in @(Engines)) { Say ("engine now: " + $e.CommandLine) }
             } else {
                 Shot "22-new-did-not-open"
                 Problem "with an older version still running, the new window did not open"
@@ -227,7 +228,7 @@ try {
         Remove-Item $OfficeLog -ErrorAction SilentlyContinue; New-Item -ItemType File $OfficeLog | Out-Null
         $again = Start-App $Exe @{ ALEXBOOKS_ENGINE_LOG = "1" }
         if (-not (Wait-Log '^loaded .*AlexBooksDesktop/' 1 120)) { Shot "30-did-not-open"; Problem "the start after that did not open the office" }
-        elseif ((Engine-Note) -notmatch 'started by AlexBooks') { Problem "the start after that did not start the engine itself: $(Engine-Note)" }
+        elseif ((Engine-Note) -notmatch 'engine: started by AlexBooks') { Problem "the start after that did not start the engine itself: $(Engine-Note)" }
         Copy-Item $EngineNote (Join-Path $Out "engine-3-next-start.txt") -ErrorAction SilentlyContinue
         Stop-All
     }

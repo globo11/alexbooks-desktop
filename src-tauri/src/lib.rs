@@ -1024,7 +1024,7 @@ pub fn run() {
                 let w = match opened {
                     Some(w) => w,
                     None => {
-                        engine::note(&format!("engine: not started by AlexBooks ({why}) — started the old way for this start; crash reports are not kept back"));
+                        engine::note(&format!("engine: NOT started by AlexBooks ({why}) - started the toolkit's way for this start; crash reports are not kept back"));
                         open_main(app.handle(), None)?
                     }
                 };
