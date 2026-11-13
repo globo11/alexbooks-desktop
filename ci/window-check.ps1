@@ -92,10 +92,15 @@ function Start-App($path, $extraEnv) {
     [System.Diagnostics.Process]::Start($si)
 }
 
-function Front($proc) {
-    # the window to the front at a known place; returns the screen position of the page's top-left corner
+function Front($path) {
+    # the window of that program to the front at a known place; returns the screen position of the page's
+    # top-left corner. By program, not by process: the program may have started itself again.
     $h = [IntPtr]::Zero
-    for ($i = 0; $i -lt 40 -and $h -eq [IntPtr]::Zero; $i++) { $proc.Refresh(); $h = $proc.MainWindowHandle; if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 } }
+    for ($i = 0; $i -lt 40 -and $h -eq [IntPtr]::Zero; $i++) {
+        $ids = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object { $_.ExecutablePath -eq $path } | ForEach-Object { $_.ProcessId })
+        foreach ($id in $ids) { $p = Get-Process -Id $id -ErrorAction SilentlyContinue; if ($p -and $p.MainWindowHandle -ne [IntPtr]::Zero) { $h = $p.MainWindowHandle } }
+        if ($h -eq [IntPtr]::Zero) { Start-Sleep -Milliseconds 500 }
+    }
     if ($h -eq [IntPtr]::Zero) { return $null }
     [Win]::ShowWindow($h, 9) | Out-Null
     [Win]::MoveWindow($h, 0, 0, 1000, 720, $true) | Out-Null
@@ -153,7 +158,7 @@ try {
         }
 
         # ---- what a person sees (recorded, and checked where a page can tell) ----
-        $o = Front $app
+        $o = Front $Exe
         if ($null -eq $o) { Say "the window could not be brought to the front - nothing clicked" }
         else {
             Start-Sleep -Seconds 4                      # time for a translation offer to appear, if one would
@@ -185,7 +190,7 @@ try {
                 Keys "%{F4}" 1200
             } else { Shot "9-second-window-missing"; Problem "a link that opens a second window did not open one" }
 
-            $o = Front $app
+            $o = Front $Exe
             if ($null -ne $o) { Click $o 930 320; Keys "^p" 4000; Shot "10-ctrl-p"; Keys "{ESC}" 1500 }
         }
         $app.Refresh()
@@ -205,20 +210,21 @@ try {
         $old = Start-App $OldExe @{ LOCALAPPDATA = $fake }
         if (-not (Wait-Log '^loaded .*AlexBooksDesktop/' 1 120)) { Shot "20-old-did-not-open"; Say "the older version did not open - this part is not conclusive" }
         else {
-            $oo = Front $old
+            $oo = Front $OldExe
             if ($null -ne $oo) { Start-Sleep -Seconds 4; Shot "20-old-page"; Click $oo 930 320; Click $oo 930 320 -Right; Shot "21-old-rightclick-empty"; Keys "{ESC}" 500 }
             foreach ($e in @(Engines)) { Say ("older engine: " + $e.CommandLine) }
             $before = Log-Count '^loaded '
             $new = Start-App $Exe @{ ALEXBOOKS_ENGINE_LOG = "1" }
             if (Wait-Log '^loaded ' ($before + 1) 120) {
                 Say "the new version opened beside the older one"
-                $n2 = Front $new; Start-Sleep -Seconds 1; Shot "22-new-beside-old"
+                $n2 = Front $Exe; Start-Sleep -Seconds 1; Shot "22-new-beside-old"
                 foreach ($e in @(Engines)) { Say ("engine now: " + $e.CommandLine) }
             } else {
                 Shot "22-new-did-not-open"
                 Problem "with an older version still running, the new window did not open"
             }
             Say ("engine.txt:`n" + (Engine-Note))
+            if ((Engine-Note) -notmatch "(?m)^main: .*right-click menu trimmed") { Problem "beside an older version: the window was not tidied" }
             Copy-Item $EngineNote (Join-Path $Out "engine-2-beside-old.txt") -ErrorAction SilentlyContinue
         }
         Copy-Item $OfficeLog (Join-Path $Out "office-2-beside-old.log") -ErrorAction SilentlyContinue

@@ -18,18 +18,24 @@
 //! Ctrl + / Ctrl - / Ctrl 0 and Ctrl+wheel (text size), F5, Alt+Left / Alt+Right, and every editing key.
 //!
 //! Everything here is best effort and never stops the window from opening: if the engine cannot be started our way
-//! (another program is using this PC's AlexBooks engine folder with other settings — the moment after an update),
-//! the window opens the way it did before 1.5.0 and the next start gets it right. `engine.txt` next to the window's
-//! lock file says what this start managed, for whoever is asked "is it switched off on this PC?".
+//! (an engine with other settings is still running in this PC's AlexBooks engine folder — the previous version's,
+//! for a moment after an update), the program starts once more the way 1.4 did (`START_VAR`) and the next start
+//! gets it right. `engine.txt` next to the window's lock file says what this start managed, for whoever is asked
+//! "is it switched off on this PC?".
 
 /// The switches every AlexBooks window starts the engine with. The first three are the toolkit's own defaults (they
 /// must be repeated: giving any switch replaces the defaults) — no "mini menu" over selected text, no Edge PDF
 /// extras, no SmartScreen; `Translate` is ours: no "Translate this page?" offer.
 pub const ENGINE_ARGS: &str = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,Translate";
 
-/// Right-click menu entries that stay (the engine's own, unlocalized names). Everything else — back, forward,
-/// reload, saveAs, print, share, webCapture, inspectElement, the image and link entries… — is a browser's.
-const MENU_KEEP: [&str; 7] = ["undo", "redo", "cut", "copy", "paste", "pasteAndMatchStyle", "selectAll"];
+/// Set (to anything) in the program's environment: start the engine the toolkit's way, with the toolkit's settings.
+/// The program sets it for itself when its own start was refused, and starts again; nobody else needs to.
+pub const START_VAR: &str = "ALEXBOOKS_ENGINE_START";
+
+/// Right-click menu entries that stay (the engine's own, unlocalized names; `spellcheck` is a suggested spelling
+/// for the word under the pointer). Everything else — back, forward, reload, saveAs, print, moreTools, emoji,
+/// copyLinkToHighlight, inspectElement, the image and link entries… — is a browser's.
+const MENU_KEEP: [&str; 8] = ["spellcheck", "undo", "redo", "cut", "copy", "paste", "pasteAndMatchStyle", "selectAll"];
 
 /// Which entries of a right-click menu to take out: `items` is (is a separator line, name) in menu order; the answer
 /// is their positions. Entries not on `MENU_KEEP` go, and so does every separator left at the top, at the bottom or
@@ -86,11 +92,16 @@ fn note_path() -> std::path::PathBuf {
     crate::lock_dir().join("engine.txt")
 }
 
-/// Start `engine.txt` afresh for this start of the program.
-pub fn note_start(version: &str) {
+/// Start `engine.txt` afresh for this start of the program — or carry on in it, when this start is the second
+/// half of one (the program started again the toolkit's way).
+pub fn note_start(version: &str, carry_on: bool) {
     let d = crate::lock_dir();
     let _ = std::fs::create_dir_all(&d);
-    let _ = std::fs::write(note_path(), format!("AlexBooks for Windows {version}\n"));
+    if carry_on {
+        note("engine: started the toolkit's way");
+    } else {
+        let _ = std::fs::write(note_path(), format!("AlexBooks for Windows {version}\n"));
+    }
 }
 
 /// Add one line to `engine.txt`.
@@ -308,6 +319,18 @@ mod tests {
     }
 
     #[test]
+    fn the_menus_the_engine_really_offers() {
+        // as recorded by the window check on WebView2 156 (engine.txt with ALEXBOOKS_ENGINE_LOG=1)
+        assert_eq!(left(&["back", "forward", "reload", "-", "saveAs", "print", "-", "moreTools"]), Vec::<String>::new());
+        assert_eq!(left(&["emoji", "-", "other", "-", "undo", "redo", "-", "cut", "copy", "paste", "pasteAndMatchStyle", "selectAll", "-", "other", "-", "moreTools"]),
+                   ["undo", "redo", "-", "cut", "copy", "paste", "pasteAndMatchStyle", "selectAll"]);
+        assert_eq!(left(&["copy", "copyLinkToHighlight", "print", "-", "moreTools"]), ["copy"]);
+        // a misspelled word in a text box: the suggestions stay, on top
+        assert_eq!(left(&["spellcheck", "spellcheck", "spellcheck", "-", "other", "-", "cut", "copy", "paste", "pasteAndMatchStyle", "-", "moreTools"]),
+                   ["spellcheck", "spellcheck", "spellcheck", "-", "cut", "copy", "paste", "pasteAndMatchStyle"]);
+    }
+
+    #[test]
     fn only_a_browsers_keys_are_taken_away() {
         let (j, u, i, c, f7, f12) = (0x4A, 0x55, 0x49, 0x43, 0x76, 0x7B);
         assert!(browser_only_key(j, true, false, false));          // Ctrl+J: downloads flyout
@@ -336,6 +359,6 @@ mod tests {
             assert!(ENGINE_ARGS.contains(f), "{f} is missing");
         }
         assert!(ENGINE_ARGS.starts_with("--disable-features="));
-        assert!(!ENGINE_ARGS.contains(' '), "one switch only: every window must start the engine with the very same text");
+        assert!(!ENGINE_ARGS.contains(' '), "one switch only");
     }
 }

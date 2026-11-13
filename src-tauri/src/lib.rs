@@ -998,35 +998,47 @@ pub fn run() {
                 }
             });
             // Always start on the shipped page: it checks the saved server, the certificate and updates, then opens it.
-            engine::note_start(env!("CARGO_PKG_VERSION"));
             #[cfg(windows)]
             {
-                // 1.5.0: start the engine ourselves (crash reports stay on this PC). The engine refuses a start whose
-                // settings differ from one still running in the same folder — the old version's, for a moment after
-                // an update — so: try, wait a second, try again; and if it still will not, open the window the
-                // toolkit's way, exactly as before 1.5.0. The window always opens.
+                // 1.5.0: the engine is started by this program (crash reports stay on this PC) - see engine.rs.
+                // The engine refuses a start whose settings differ from one still running in the same folder: the
+                // previous version's, for a moment after an update. So: try, wait, try once more - and if it still
+                // will not, start the program again in "the toolkit's way", which is exactly how 1.4 started it and
+                // what that older engine expects. (A second start of the program, not a third try in this one:
+                // after a refused start the engine refuses the toolkit's settings in the same process too - the
+                // window check in ci/ found that out.) The next start is back to our own.
+                let toolkit_way = std::env::var_os(engine::START_VAR).is_some();
+                std::env::remove_var(engine::START_VAR);        // not handed on to a later "Restart AlexBooks"
+                engine::note_start(env!("CARGO_PKG_VERSION"), toolkit_way);
                 let mut opened = None;
                 let mut why = String::from("no data folder");
-                if let Some(dir) = engine::data_dir(app.handle()) {
-                    for attempt in 0..3 {
-                        if attempt > 0 {
-                            std::thread::sleep(Duration::from_millis(1000));
+                for attempt in 0..(if toolkit_way { 3 } else { 2 }) {
+                    if attempt > 0 {
+                        std::thread::sleep(Duration::from_millis(1500));
+                    }
+                    let tried = if toolkit_way {
+                        open_main(app.handle(), None).map_err(|e| e.to_string())
+                    } else {
+                        match engine::data_dir(app.handle()) {
+                            Some(dir) => engine::own_environment(&dir)
+                                .and_then(|environment| open_main(app.handle(), Some(environment)).map_err(|e| format!("the window did not open on it: {e}"))),
+                            None => Err(why.clone()),
                         }
-                        match engine::own_environment(&dir) {
-                            Ok(environment) => match open_main(app.handle(), Some(environment)) {
-                                Ok(w) => { opened = Some(w); break; }
-                                Err(e) => why = format!("the window did not open on it: {e}"),
-                            },
-                            Err(e) => why = e,
-                        }
+                    };
+                    match tried {
+                        Ok(w) => { opened = Some(w); break; }
+                        Err(e) => { engine::note(&format!("engine: start {} did not work: {e}", attempt + 1)); why = e; }
                     }
                 }
                 let w = match opened {
                     Some(w) => w,
-                    None => {
-                        engine::note(&format!("engine: NOT started by AlexBooks ({why}) - started the toolkit's way for this start; crash reports are not kept back"));
-                        open_main(app.handle(), None)?
+                    None if !toolkit_way => {
+                        engine::note("engine: NOT started by AlexBooks - starting again the toolkit's way; crash reports are not kept back on this start");
+                        std::env::set_var(engine::START_VAR, "toolkit");
+                        release_lock();
+                        app.handle().restart();
                     }
+                    None => return Err(why.into()),
                 };
                 engine::tidy(&w);
             }
