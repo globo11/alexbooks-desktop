@@ -1,6 +1,6 @@
 [package]
 name = "alexbooks-desktop"
-version = "1.4.3"
+version = "1.5.0"
 description = "AlexBooks for Windows — the office's own window onto the AlexBooks server"
 authors = ["Alex Tax Services Corp"]
 edition = "2021"
@@ -26,6 +26,12 @@ aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha2 = "0.10"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# 1.5.0 (engine.rs): the page engine's own interface, for what the toolkit has no setting for. The same versions the
+# toolkit itself uses, so there is still one copy of each in the program.
+[target.'cfg(windows)'.dependencies]
+webview2-com = "0.39"
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Globalization", "Win32_System_Com", "Win32_UI_Input_KeyboardAndMouse"] }
 
 [profile.release]
 codegen-units = 1

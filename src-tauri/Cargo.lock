@@ -54,7 +54,7 @@ dependencies = [
 
 [[package]]
 name = "alexbooks-desktop"
-version = "1.4.3"
+version = "1.5.0"
 dependencies = [
  "aes-gcm",
  "pbkdf2",
@@ -69,6 +69,8 @@ dependencies = [
  "tauri-plugin-window-state",
  "tokio",
  "url",
+ "webview2-com",
+ "windows",
  "zip",
 ]
 

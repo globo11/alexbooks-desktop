@@ -11,13 +11,16 @@
 //! With no server saved yet it asks "Just this PC" or "Network" (0.2.0): Network asks the LAN ("ALEXBOOKS?" on
 //! UDP 8443), falls back to knocking on port 8443 across the subnet, and always allows typing an address.
 //! A small native menu (Reload · Connect to a different office · Check for updates · About · Exit) is the only
-//! chrome around the server's pages.
+//! chrome around the server's pages. What a browser's engine would add on its own — its right-click menu, the offer
+//! to translate, its report-to-Microsoft habits — is switched off in `engine.rs` (1.5.0).
 
 use std::{fs, path::{Path, PathBuf}, sync::Mutex, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 mod abp;
+#[cfg_attr(not(windows), allow(dead_code))]
+mod engine;
 
 use tauri::webview::{DownloadEvent, NewWindowResponse};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
@@ -551,7 +554,7 @@ const LOCK_NAME: &str = "alexbooks-window.lock";
 const WAKE_NAME: &str = "alexbooks-window.wake";
 const STALE_AFTER: u64 = 8;                                    // seconds without a heartbeat = stuck
 
-fn lock_dir() -> PathBuf {
+pub(crate) fn lock_dir() -> PathBuf {
     std::env::var_os("LOCALAPPDATA").map(PathBuf::from).unwrap_or_else(std::env::temp_dir).join("AlexBooks")
 }
 
@@ -808,6 +811,85 @@ async fn install_update(app: AppHandle, pending: State<'_, Pending>) -> Result<(
 
 // ---------------------------------------------------------------------------------------------------------------
 
+/// The one main window. On Windows `environment` is the engine started by `engine::own_environment`; without it the
+/// toolkit starts the engine itself, with the same switches.
+fn open_main(app: &AppHandle, #[cfg(windows)] environment: Option<engine::Environment>) -> tauri::Result<tauri::WebviewWindow> {
+    let h_dl = app.clone();
+    let h_nav = app.clone();
+    let h_new = app.clone();
+    let builder = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
+        .title("AlexBooks")
+        .inner_size(1280.0, 860.0)
+        .min_inner_size(900.0, 600.0)
+        .user_agent(&format!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AlexBooksDesktop/{}", env!("CARGO_PKG_VERSION")))
+        .zoom_hotkeys_enabled(true)                     // Ctrl + / Ctrl - / Ctrl 0 and Ctrl+wheel: the text size
+        .disable_drag_drop_handler()                    // 0.4.0: let the page's own drop zones receive files from Explorer
+        .on_download(move |_wv, ev| {
+            match ev {
+                DownloadEvent::Requested { url, destination } => {
+                    let name = download_name(destination, &url);
+                    *destination = unique_path(&downloads_dir(&h_dl), &name);
+                    page_notice(&h_dl, &format!("Downloading {name}…"));
+                }
+                DownloadEvent::Finished { path, success, .. } => match (success, path) {
+                    (true, Some(p)) => {
+                        let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                        page_notice(&h_dl, &format!("Saved to Downloads: {name}"));
+                        show_download(&p);
+                    }
+                    _ => page_notice(&h_dl, "The download did not finish."),
+                },
+                _ => {}
+            }
+            true
+        })
+        .on_navigation(move |url| {
+            if is_apply_update(url) && is_ours(&h_nav, url) {
+                // 1.2.0: "Restart AlexBooks to update now" on Settings → Updates — the server's own
+                // page only explains the link; this window runs the update screen instead
+                let h = h_nav.clone();
+                tauri::async_runtime::spawn(async move { let _ = show_start(&h, "apply"); });
+                false
+            } else if is_ours(&h_nav, url) || matches!(url.scheme(), "about" | "blob" | "data") {
+                true
+            } else {
+                open_outside(url);                      // github.com, mailto:, a bank — the PC's browser, not this window
+                false
+            }
+        })
+        .on_new_window(move |url, features| {
+            if is_ours(&h_new, &url) {
+                // target=_blank on our own server (a PDF, a statement's original): a second AlexBooks window
+                let label = format!("w{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
+                let second = WebviewWindowBuilder::new(&h_new, label, WebviewUrl::External(url))
+                    .title("AlexBooks").inner_size(1100.0, 820.0).zoom_hotkeys_enabled(true);
+                // 1.5.0: every window of one program must share one engine start (the engine refuses a second
+                // start in the same folder with other settings) — the opener's, whichever way it was started
+                #[cfg(windows)]
+                let second = second.with_environment(features.opener().environment.clone());
+                #[cfg(not(windows))]
+                let _ = &features;
+                if let Ok(w) = second.build() {
+                    #[cfg(windows)]
+                    engine::tidy(&w);
+                    #[cfg(not(windows))]
+                    let _ = w;
+                }
+            } else {
+                open_outside(&url);
+            }
+            NewWindowResponse::Deny
+        });
+    // without our own engine start: no switches either — the toolkit's start must be the very one an older
+    // AlexBooks for Windows made, or the engine would refuse this one too
+    #[cfg(windows)]
+    let builder = match environment {
+        Some(environment) => builder.with_environment(environment),
+        None => builder,
+    };
+    builder.build()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if !claim_single_window() {
@@ -832,6 +914,7 @@ pub fn run() {
                         &MenuItem::with_id(app, "back", "Back", true, Some("Alt+Left"))?,
                         &MenuItem::with_id(app, "forward", "Forward", true, Some("Alt+Right"))?,
                         &MenuItem::with_id(app, "reload", "Reload", true, Some("F5"))?,
+                        &MenuItem::with_id(app, "zoom100", "Text back to normal size", true, None::<&str>)?,
                         &MenuItem::with_id(app, "downloads", "Open the Downloads folder", true, None::<&str>)?,
                         &MenuItem::with_id(app, "restart", "Restart AlexBooks", true, None::<&str>)?,
                         &PredefinedMenuItem::separator(app)?,
@@ -849,6 +932,7 @@ pub fn run() {
                     "reload" => app.get_webview_window("main").map(|w| w.eval("location.reload()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
                     "back" => app.get_webview_window("main").map(|w| w.eval("history.back()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
                     "forward" => app.get_webview_window("main").map(|w| w.eval("history.forward()")).unwrap_or(Ok(())).map_err(|e| e.to_string()),
+                    "zoom100" => app.get_webview_window("main").map(|w| w.set_zoom(1.0)).unwrap_or(Ok(())).map_err(|e| e.to_string()),
                     "downloads" => { show_download(&downloads_dir(app)); Ok(()) }
                     "restart" => { release_lock(); app.restart(); }
                     "switch" => show_start(app, "switch"),
@@ -914,61 +998,52 @@ pub fn run() {
                 }
             });
             // Always start on the shipped page: it checks the saved server, the certificate and updates, then opens it.
-            let h_dl = app.handle().clone();
-            let h_nav = app.handle().clone();
-            let h_new = app.handle().clone();
-            WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
-                .title("AlexBooks")
-                .inner_size(1280.0, 860.0)
-                .min_inner_size(900.0, 600.0)
-                .user_agent(&format!("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AlexBooksDesktop/{}", env!("CARGO_PKG_VERSION")))
-                .zoom_hotkeys_enabled(true)                     // Ctrl + / Ctrl - / Ctrl 0, like a browser
-                .disable_drag_drop_handler()                    // 0.4.0: let the page's own drop zones receive files from Explorer
-                .on_download(move |_wv, ev| {
-                    match ev {
-                        DownloadEvent::Requested { url, destination } => {
-                            let name = download_name(destination, &url);
-                            *destination = unique_path(&downloads_dir(&h_dl), &name);
-                            page_notice(&h_dl, &format!("Downloading {name}…"));
+            #[cfg(windows)]
+            {
+                // 1.5.0: the engine is started by this program (crash reports stay on this PC) - see engine.rs.
+                // The engine refuses a start whose settings differ from one still running in the same folder: the
+                // previous version's, for a moment after an update. So: try, wait, try once more - and if it still
+                // will not, start the program again in "the toolkit's way", which is exactly how 1.4 started it and
+                // what that older engine expects. (A second start of the program, not a third try in this one:
+                // after a refused start the engine refuses the toolkit's settings in the same process too - the
+                // window check in ci/ found that out.) The next start is back to our own.
+                let toolkit_way = std::env::var_os(engine::START_VAR).is_some();
+                std::env::remove_var(engine::START_VAR);        // not handed on to a later "Restart AlexBooks"
+                engine::note_start(env!("CARGO_PKG_VERSION"), toolkit_way);
+                let mut opened = None;
+                let mut why = String::from("no data folder");
+                for attempt in 0..(if toolkit_way { 3 } else { 2 }) {
+                    if attempt > 0 {
+                        std::thread::sleep(Duration::from_millis(1500));
+                    }
+                    let tried = if toolkit_way {
+                        open_main(app.handle(), None).map_err(|e| e.to_string())
+                    } else {
+                        match engine::data_dir(app.handle()) {
+                            Some(dir) => engine::own_environment(&dir)
+                                .and_then(|environment| open_main(app.handle(), Some(environment)).map_err(|e| format!("the window did not open on it: {e}"))),
+                            None => Err(why.clone()),
                         }
-                        DownloadEvent::Finished { path, success, .. } => match (success, path) {
-                            (true, Some(p)) => {
-                                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                                page_notice(&h_dl, &format!("Saved to Downloads: {name}"));
-                                show_download(&p);
-                            }
-                            _ => page_notice(&h_dl, "The download did not finish."),
-                        },
-                        _ => {}
+                    };
+                    match tried {
+                        Ok(w) => { opened = Some(w); break; }
+                        Err(e) => { engine::note(&format!("engine: start {} did not work: {e}", attempt + 1)); why = e; }
                     }
-                    true
-                })
-                .on_navigation(move |url| {
-                    if is_apply_update(url) && is_ours(&h_nav, url) {
-                        // 1.2.0: "Restart AlexBooks to update now" on Settings → Updates — the server's own
-                        // page only explains the link; this window runs the update screen instead
-                        let h = h_nav.clone();
-                        tauri::async_runtime::spawn(async move { let _ = show_start(&h, "apply"); });
-                        false
-                    } else if is_ours(&h_nav, url) || matches!(url.scheme(), "about" | "blob" | "data") {
-                        true
-                    } else {
-                        open_outside(url);                      // github.com, mailto:, a bank — the PC's browser, not this window
-                        false
+                }
+                let w = match opened {
+                    Some(w) => w,
+                    None if !toolkit_way => {
+                        engine::note("engine: NOT started by AlexBooks - starting again the toolkit's way; crash reports are not kept back on this start");
+                        std::env::set_var(engine::START_VAR, "toolkit");
+                        release_lock();
+                        app.handle().restart();
                     }
-                })
-                .on_new_window(move |url, _features| {
-                    if is_ours(&h_new, &url) {
-                        // target=_blank on our own server (a PDF, a statement's original): a second AlexBooks window
-                        let label = format!("w{}", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0));
-                        let _ = WebviewWindowBuilder::new(&h_new, label, WebviewUrl::External(url))
-                            .title("AlexBooks").inner_size(1100.0, 820.0).zoom_hotkeys_enabled(true).build();
-                    } else {
-                        open_outside(&url);
-                    }
-                    NewWindowResponse::Deny
-                })
-                .build()?;
+                    None => return Err(why.into()),
+                };
+                engine::tidy(&w);
+            }
+            #[cfg(not(windows))]
+            open_main(app.handle())?;
             Ok(())
         })
         .build(tauri::generate_context!())

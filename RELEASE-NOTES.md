@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.4.3 — Set up a new office names the package so its passphrase comes from the right email; accents in a typed passphrase are ignored.
+AlexBooks for Windows 1.5.0 — right-click shows only Cut / Copy / Paste; no translate offer or other browser pop-ups; a crash report of the page engine stays on the PC instead of going to Microsoft.
