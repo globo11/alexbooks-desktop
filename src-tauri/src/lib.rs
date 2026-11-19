@@ -33,6 +33,10 @@ const PORT: u16 = 8443;
 struct Config {
     #[serde(default)]
     server: String,
+    /// 1.5.1: when an office last opened from this PC (seconds since 1970). A package file older than this has
+    /// had its turn: it set that office up, or it was lying in Downloads while that office was already in use.
+    #[serde(default)]
+    last_ok: u64,
 }
 
 /// An update found by `check_update`, kept until `install_update` is called.
@@ -394,7 +398,7 @@ async fn trust_ca(app: AppHandle, server: String) -> Result<String, String> {
 #[tauri::command]
 fn connect(app: AppHandle, server: String, office: String) -> Result<String, String> {
     let u = normalize(&server)?;
-    write_config(&app, &Config { server: u.to_string() })?;
+    write_config(&app, &Config { server: u.to_string(), last_ok: now_secs() })?;
     let w = app.get_webview_window("main").ok_or("no window")?;
     let title = if office.trim().is_empty() { "AlexBooks".to_string() } else { format!("AlexBooks — {}", office.trim()) };
     let _ = w.set_title(&title);
@@ -402,10 +406,51 @@ fn connect(app: AppHandle, server: String, office: String) -> Result<String, Str
     Ok(u.to_string())
 }
 
+/// 1.5.1: what this PC knows about the office at `server` without asking it anything. `here`: the address is this
+/// PC. `installed`: the office's program is on this PC's disk. `listening`: something has the office's port open —
+/// a server that is there but too busy to answer in time still has it open; one that is gone does not.
+#[derive(Debug, Clone, Serialize, Default)]
+pub struct Here {
+    pub here: bool,
+    pub installed: bool,
+    pub listening: bool,
+}
+
+fn is_this_pc(host: &str) -> bool {
+    let h = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    if h == "localhost" || h == "127.0.0.1" || h == "::1" || h == "[::1]" {
+        return true;
+    }
+    let name = std::env::var("COMPUTERNAME").or_else(|_| std::env::var("HOSTNAME")).unwrap_or_default().to_ascii_lowercase();
+    !name.is_empty() && (h == name || h.split('.').next() == Some(name.as_str()))
+}
+
+fn office_program_dir() -> PathBuf {
+    PathBuf::from(if cfg!(windows) { r"C:\AlexBooks\app" } else { "/opt/alexbooks/app" })
+}
+
+#[tauri::command]
+async fn office_here(server: String) -> Here {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Ok(u) = normalize(&server) else { return Here::default() };
+        let host = u.host_str().unwrap_or("").to_string();
+        let port = u.port().unwrap_or(8443);
+        let here = is_this_pc(&host);
+        let listening = {
+            use std::net::{TcpStream, ToSocketAddrs};
+            let target = if here { "127.0.0.1".to_string() } else { host.clone() };
+            (target.as_str(), port).to_socket_addrs().ok().and_then(|mut a| a.next())
+                .map(|a| TcpStream::connect_timeout(&a, Duration::from_millis(1500)).is_ok()).unwrap_or(false)
+        };
+        Here { here, installed: here && office_program_dir().is_dir(), listening }
+    }).await.unwrap_or_default()
+}
+
 /// Forget the saved address and show the start page's choice again.
 #[tauri::command]
 fn forget_server(app: AppHandle) -> Result<(), String> {
-    write_config(&app, &Config::default())?;
+    let last_ok = read_config(&app).last_ok;                    // (packages that had their turn stay had)
+    write_config(&app, &Config { server: String::new(), last_ok })?;
     show_start(&app, "switch")
 }
 
@@ -687,10 +732,20 @@ fn package_from_args<I: IntoIterator<Item = String>>(args: I) -> Option<String> 
 /// newest .abp from the last week — is picked up by itself, so clicking the attachment before the installer works too.
 /// The NAME does not matter ("… (1).abp", "… (3).abp" from downloading the attachment several times are all fine):
 /// the newest by date wins, which is the one just downloaded.
+///
+/// 1.5.1: a package from before an office last opened on this PC does not count. The file stays in Downloads after
+/// it has set its office up; when that office's server was slow to answer one afternoon, the start page took the
+/// file for a new office being set up and showed the setup screen over an office that was installed and in use.
 fn find_recent_package(app: &AppHandle) -> Option<String> {
+    let last_ok = read_config(app).last_ok;
+    newest_package([app.path().download_dir().ok(), app.path().desktop_dir().ok()].into_iter().flatten().collect(), last_ok)
+}
+
+fn newest_package(dirs: Vec<PathBuf>, last_ok: u64) -> Option<String> {
     let week = Duration::from_secs(7 * 86400);
+    let had_its_turn = std::time::UNIX_EPOCH + Duration::from_secs(last_ok);
     let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
-    for dir in [app.path().download_dir().ok(), app.path().desktop_dir().ok()].into_iter().flatten() {
+    for dir in dirs {
         let Ok(rd) = fs::read_dir(&dir) else { continue };
         for e in rd.flatten() {
             let p = e.path();
@@ -698,6 +753,7 @@ fn find_recent_package(app: &AppHandle) -> Option<String> {
             let Ok(md) = e.metadata() else { continue };
             let Ok(m) = md.modified() else { continue };
             if m.elapsed().map(|age| age > week).unwrap_or(true) { continue; }
+            if last_ok > 0 && m <= had_its_turn { continue; }
             if best.as_ref().map(|(t, _)| m > *t).unwrap_or(true) { best = Some((m, p)); }
         }
     }
@@ -901,7 +957,7 @@ pub fn run() {
         .manage(Pending(Mutex::new(None)))
         .manage(PendingPackage(Mutex::new(package_from_args(std::env::args()))))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package, package_label
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package, package_label, office_here
         ])
         .setup(|app| {
             let menu = Menu::with_items(
@@ -1057,7 +1113,35 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{download_name, is_apply_update, normalize, parse_beacon, unique_path};
+    use super::{download_name, is_apply_update, is_this_pc, newest_package, normalize, parse_beacon, unique_path};
+
+    /// 1.5.1: a package that was already in Downloads when an office last opened on this PC has had its turn.
+    #[test]
+    fn a_package_from_before_the_office_last_opened_is_not_a_new_office() {
+        let dir = std::env::temp_dir().join(format!("abp-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("AlexBooks-New-office.abp");
+        std::fs::write(&file, b"x").unwrap();
+        let written = std::fs::metadata(&file).unwrap().modified().unwrap().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs();
+        // first start on this PC (no office ever opened): the package is picked up
+        assert_eq!(newest_package(vec![dir.clone()], 0), Some(file.to_string_lossy().to_string()));
+        // an office opened after the file arrived: the file set it up, or lay there while it was in use
+        assert_eq!(newest_package(vec![dir.clone()], written + 60), None);
+        // the office was removed and a new package downloaded since: that one is new
+        assert_eq!(newest_package(vec![dir.clone()], written.saturating_sub(3600)), Some(file.to_string_lossy().to_string()));
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        assert_eq!(newest_package(vec![dir.clone()], written + 60), None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn this_pc_is_known_by_its_names() {
+        assert!(is_this_pc("localhost") && is_this_pc("127.0.0.1") && is_this_pc("LOCALHOST"));
+        assert!(!is_this_pc("192.168.1.50") && !is_this_pc("office-server") && !is_this_pc(""));
+        std::env::set_var("COMPUTERNAME", "FRONT-OFFICE");
+        assert!(is_this_pc("front-office") && is_this_pc("Front-Office.lan") && !is_this_pc("front-office-2"));
+    }
 
     #[test]
     fn package_argument() {

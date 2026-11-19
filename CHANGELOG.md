@@ -1,5 +1,11 @@
 # What's new — AlexBooks for Windows
 
+## 1.5.1 — a slow office is waited for
+
+- **The setup page no longer shows over an office that is already installed.** When the office's server was busy and slow to answer, and the package from the email was still in Downloads, opening AlexBooks showed "set up a new office", as if nothing had been installed. Nothing was lost, but it looked that way.
+- **AlexBooks waits.** If the office is on this PC, or its server is there but busy, it keeps trying for a minute before saying it cannot be reached, and then says what to do: wait, try again, restart the PC.
+- **A package that has already set up its office is not picked up again.**
+
 ## 1.5.0 — a program, not a browser
 
 - **Right-click** shows only what a text box needs — spelling suggestions, Undo, Cut, Copy, Paste, Select all — and nothing at all on the rest of a page. The browser's own entries (Back, Refresh, Save as, Print, Inspect) are gone.
