@@ -50,6 +50,15 @@
   dl { display:grid; grid-template-columns:auto 1fr; gap:6px 16px; margin:0 0 16px; font-size:14px }
   dt { color:var(--muted) } dd { margin:0; -webkit-user-select:text; user-select:text }
   .notes { max-height:160px; overflow:auto; font-size:13.5px; line-height:1.45; color:var(--ink); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px; white-space:pre-wrap; -webkit-user-select:text; user-select:text }
+  /* 1.5.2: "this PC or the office's server?" on the new-office page */
+  .pick { display:flex; gap:12px; align-items:flex-start; text-transform:none; letter-spacing:0; font-size:15px; color:var(--ink); padding:9px 14px; margin-bottom:6px }
+  .pick input { width:auto; margin:3px 0 0; flex:none; accent-color:var(--accent) }
+  .pick.on { border-color:var(--accent); background:var(--accent-soft) }
+  .pick b { margin-bottom:2px }
+  #pkg-folder-box { border:1px solid var(--line); border-radius:10px; padding:10px 14px; margin:0 0 6px }
+  #pkg-folder-name { font-size:13.5px; line-height:1.4; -webkit-user-select:text; user-select:text; word-break:break-all }
+  #pkg-folder-name.good { color:var(--ok) }
+  body { overflow-y:auto; align-items:safe center; padding:10px 0 }
   [hidden] { display:none !important }
   .restart{display:flex;align-items:center;gap:18px;margin:6px 0 14px}
   .restart .ring{width:56px;height:56px;border-radius:50%;border:6px solid #d9e2ec;border-top-color:#0b6e8e;animation:turn 1.1s linear infinite;flex:none}
@@ -119,15 +128,29 @@
   <!-- 2c. a new office from an emailed package -->
   <section id="s-package" hidden>
     <h1>Set up a new office</h1>
-    <p id="pkg-intro">Open the <b>.abp</b> file from the email (double-click it) or pick it here, and type the passphrase from the same email. The installer then sets AlexBooks up on this computer (Windows asks for permission once) and this window opens it when it is done.</p>
+    <p id="pkg-intro">Pick the <b>.abp</b> file from the email and type the passphrase from the same email. Windows asks for permission once, and this window opens AlexBooks when it is done.</p>
     <div class="note" id="pkg-missing">No package on this PC yet. Go back to the email from AlexBooks: the package is the <b>attachment at the very bottom</b> of it (the .abp file). Click it so it downloads, then come back here — the file is picked up by itself, or use <i>Pick the package file…</i> to find it in Downloads.</div>
     <div class="row"><button type="button" id="pkg-pick">Pick the package file…</button><span class="grow" id="pkg-name" style="opacity:.8;white-space:pre-line"></span></div>
     <form id="pkg-form" autocomplete="off" style="margin-top:10px">
       <label for="pkg-pass">Passphrase (from the email)</label>
       <input id="pkg-pass" placeholder="cedar-falcon-honey-42" spellcheck="false">
+      <div id="pkg-where" style="margin-top:12px">
+        <label>Where will this office keep its books?</label>
+        <label class="choice pick"><input type="radio" name="pkg-where" value="pc"><span><b>On this PC</b><small>One PC uses AlexBooks. Other PCs can still open it from this one while it is on.</small></span></label>
+        <label class="choice pick"><input type="radio" name="pkg-where" value="folder"><span><b>On the office's server</b><small>Several PCs use AlexBooks. The books go in a shared folder on the server, and every other PC is set up from that folder.</small></span></label>
+        <div id="pkg-folder-box" hidden>
+          <label for="pkg-folder">The shared folder on the server</label>
+          <input id="pkg-folder" placeholder="\\SERVER\office" spellcheck="false">
+          <div class="row" style="margin-top:10px"><button type="button" id="pkg-folder-pick">Pick the folder…</button><span class="grow" id="pkg-folder-name"></span></div>
+        </div>
+      </div>
       <div class="err" id="pkg-err"></div>
-      <div class="status" id="pkg-status" hidden><span class="spin"></span><span>Installing… the installer shows its own progress; this window opens AlexBooks when it is ready.</span></div>
-      <div class="row"><button type="button" class="quiet" id="pkg-back">← Back</button><span class="grow"></span><button type="submit" id="pkg-go" disabled>Install</button></div>
+      <div class="status" id="pkg-status" hidden><span class="spin"></span><span id="pkg-status-text">Installing… the installer shows its own progress; this window opens AlexBooks when it is ready.</span></div>
+      <div id="pkg-fellback" hidden>
+        <div class="note" id="pkg-fellback-text"></div>
+        <div class="row"><span class="grow"></span><button type="button" id="pkg-fellback-open">Open AlexBooks</button></div>
+      </div>
+      <div class="row" id="pkg-buttons"><button type="button" class="quiet" id="pkg-back">← Back</button><span class="grow"></span><button type="submit" id="pkg-go" disabled>Install</button></div>
     </form>
   </section>
 
@@ -325,20 +348,73 @@
     $("pkg-intro").textContent = "The package from the email is open. Type the passphrase from the same email and click Install; Windows asks for permission once, and this window opens the new office when it is done.";
     return true;
   }
+  // 1.5.2: where the office keeps its books — this PC, or a shared folder on the office's server. Asked here, so the
+  // office goes straight into the folder and nothing has to be moved later.
+  const whereChoice = () => { const r = document.querySelector('input[name="pkg-where"]:checked'); return r ? r.value : ""; };
+  function folderSays(text, good) { const n = $("pkg-folder-name"); n.textContent = text || ""; n.className = "grow" + (good ? " good" : ""); }
+  document.querySelectorAll('input[name="pkg-where"]').forEach(r => r.addEventListener("change", () => {
+    document.querySelectorAll(".pick").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+    $("pkg-folder-box").hidden = whereChoice() !== "folder"; setErr("pkg-err", "");
+    if (whereChoice() === "folder" && !$("pkg-folder").value) $("pkg-folder").focus();
+  }));
+  // the folder is tried at once, as the person at this PC: a name that cannot be opened or saved in is found out now
+  async function tryFolder() {
+    const typed = $("pkg-folder").value.trim();
+    if (!typed) { folderSays(""); return null; }
+    try {
+      const c = await invoke("check_folder", { folder: typed });
+      $("pkg-folder").value = c.folder;
+      folderSays(c.local ? "✓ This PC can save there. It is a folder on this PC: the other PCs reach it only if this PC shares it and stays on." : "✓ This PC can open it and save there.", true);
+      return c.folder;
+    } catch (m) { folderSays(""); setErr("pkg-err", typeof m === "string" ? m : "That folder could not be checked."); return null; }
+  }
+  $("pkg-folder").addEventListener("change", () => { setErr("pkg-err", ""); tryFolder(); });
+  $("pkg-folder-pick").addEventListener("click", async () => {
+    const f = await invoke("pick_folder").catch(() => null);
+    if (f) { $("pkg-folder").value = f; setErr("pkg-err", ""); tryFolder(); }
+  });
   $("pkg-form").addEventListener("submit", async (e) => {
-    e.preventDefault(); setErr("pkg-err", "");
+    e.preventDefault(); setErr("pkg-err", ""); $("pkg-fellback").hidden = true;
     const pass = $("pkg-pass").value.trim();
     if (!pkgPath) { setErr("pkg-err", "There is no package yet: download the attachment at the bottom of the AlexBooks email first, then pick it."); $("pkg-missing").hidden = false; return; }
     if (!pass) { setErr("pkg-err", "Type the passphrase from the email."); return; }
+    const where = whereChoice();
+    if (!where) { setErr("pkg-err", "Choose where this office will keep its books: on this PC, or on the office's server."); return; }
+    let folder = null;
+    if (where === "folder") {
+      if (!$("pkg-folder").value.trim()) { setErr("pkg-err", "Pick the shared folder on the office's server (or type it, for example \\\\SERVER\\office)."); return; }
+      folder = await tryFolder();
+      if (!folder) return;
+    }
     $("pkg-go").disabled = true;
-    try { await invoke("install_package", { path: pkgPath, passphrase: pass }); }
+    let run;
+    try { run = await invoke("install_package", { path: pkgPath, passphrase: pass, folder }); }
     catch (m) { setErr("pkg-err", typeof m === "string" ? m : "The package could not be opened."); $("pkg-go").disabled = false; return; }
+    $("pkg-status-text").textContent = folder
+      ? "Installing… then the books are put in " + folder + ". The installer shows its own progress; this window opens AlexBooks when everything is ready."
+      : "Installing… the installer shows its own progress; this window opens AlexBooks when it is ready.";
     $("pkg-status").hidden = false;
-    // the installer runs on its own; look for the new server every few seconds, for up to 20 minutes
+    // The installer runs on its own; look for the new server every few seconds, for up to 20 minutes. A package that
+    // leaves a note when it is completely done (2.7.8+) is waited for: the server answers before the books have
+    // moved to the folder, and the first login must not be made in between.
+    const patience = folder ? 600000 : 60000;                  // how long a server that answers is kept waiting for the note
+    let seen = 0;
     for (let i = 0; i < 240; i++) {
       await new Promise(r => setTimeout(r, 5000));
       const f = await invoke("check_local").catch(() => null);
-      if (f) { openServer(f.url, true, 12); return; }
+      const note = run && run.asks_where ? await invoke("install_result", { started: run.started }).catch(() => null) : null;
+      if (f && !seen) seen = Date.now();
+      if (!f || (run && run.asks_where && !note && Date.now() - seen < patience)) continue;
+      if (folder && note && note.where !== "folder") {
+        // the office works, on this PC: say so plainly before opening it
+        $("pkg-status").hidden = true; $("pkg-buttons").hidden = true;
+        $("pkg-fellback-text").textContent = "AlexBooks is installed and works on this PC, but its books could not be put in " + folder + "."
+          + (note.problem ? " (" + note.problem + ")" : "") + " Nothing is lost. You can move the office to the server later: Settings → Workstation install, in AlexBooks.";
+        $("pkg-fellback").hidden = false;
+        $("pkg-fellback-open").onclick = () => openServer(f.url, true, 12);
+        return;
+      }
+      openServer(f.url, true, 12); return;
     }
     $("pkg-status").hidden = true; setErr("pkg-err", "The installer has not finished yet. When it has, choose Just this PC."); $("pkg-go").disabled = false;
   });

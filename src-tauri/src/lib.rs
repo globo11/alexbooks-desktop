@@ -19,6 +19,7 @@ use std::{fs, path::{Path, PathBuf}, sync::Mutex, time::Duration};
 use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 mod abp;
+mod place;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod engine;
 
@@ -790,8 +791,54 @@ async fn pick_package() -> Option<String> {
     }).await.ok().flatten()
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Where a new office keeps its books (1.5.2, src/place.rs): this PC, or a shared folder on the office's server
+
+/// The server's own name for a mapped drive letter, asked as the person (the installer, an administrator, has no P:).
+#[cfg(windows)]
+fn drive_remote(letter: char) -> Option<String> {
+    let run = |program: &str, args: &[&str]| -> Option<String> {
+        let out = quiet(std::process::Command::new(program)).args(args).output().ok()?;
+        place::first_unc(&String::from_utf8_lossy(&out.stdout))
+    };
+    run("reg", &["query", &format!(r"HKCU\Network\{letter}"), "/v", "RemotePath"]).or_else(|| run("net", &["use", &format!("{letter}:")]))
+}
+#[cfg(not(windows))]
+fn drive_remote(_letter: char) -> Option<String> {
+    None
+}
+
 #[tauri::command]
-async fn install_package(app: AppHandle, path: String, passphrase: String) -> Result<String, String> {
+async fn pick_folder() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        rfd::FileDialog::new().set_title("Pick the shared folder on the office's server").pick_folder().map(|p| p.to_string_lossy().to_string())
+    }).await.ok().flatten()
+}
+
+/// Try the folder now, as the person, before anything is installed.
+#[tauri::command]
+async fn check_folder(folder: String) -> Result<place::Checked, String> {
+    tauri::async_runtime::spawn_blocking(move || place::check(&folder, &drive_remote)).await.map_err(|e| e.to_string())?
+}
+
+/// The installer's own note that it is completely done (AlexBooks 2.7.8+), for the install that began at `started`.
+#[tauri::command]
+fn install_result(started: u64) -> Option<place::InstallResult> {
+    let dir = std::env::var_os("ProgramData").map(PathBuf::from)?;
+    place::read_result(&fs::read_to_string(dir.join("AlexBooks").join("install-result.json")).ok()?, started)
+}
+
+/// What the page needs to follow an install that was just started.
+#[derive(Debug, Clone, Serialize)]
+pub struct Installing {
+    pub dir: String,
+    /// the package's installer takes the answer and leaves a note when done (2.7.8+)
+    pub asks_where: bool,
+    pub started: u64,
+}
+
+#[tauri::command]
+async fn install_package(app: AppHandle, path: String, passphrase: String, folder: Option<String>) -> Result<Installing, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let data = fs::read(&path).map_err(|e| format!("Could not read the file: {e}"))?;
         let zip_bytes = abp::open(&data, &passphrase)?;
@@ -799,12 +846,22 @@ async fn install_package(app: AppHandle, path: String, passphrase: String) -> Re
         let stem = Path::new(&path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "package".into());
         let dir = app.path().app_local_data_dir().map_err(|e| e.to_string())?.join("packages").join(stem);
         let installer = abp::unpack(&zip_bytes, &dir)?;
+        // 1.5.2: the answer to "this PC or the office's server?" goes with the installer
+        let asks_where = place::asks_where(&installer);
+        let folder = folder.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+        if folder.is_some() && !asks_where {
+            return Err("This package was made before AlexBooks could put a new office on the server during setup. Choose \"On this PC\" now and move the office to the server afterwards (Settings → Workstation install), or ask AlexBooks for a new package.".into());
+        }
+        if asks_where {
+            place::leave_answer(&installer, folder.as_deref())?;
+        }
+        let started = now_secs();
         // the .cmd asks Windows for elevation itself and shows its own progress window
         #[cfg(windows)]
         quiet(std::process::Command::new("cmd")).env("ALEXBOOKS_LAUNCHER", "1").args(["/C", "start", "", &installer.to_string_lossy()]).spawn().map_err(|e| format!("Could not start the installer: {e}"))?;   // the installer then leaves the opening to this window
         #[cfg(not(windows))]
         let _ = installer;
-        Ok(dir.to_string_lossy().to_string())
+        Ok(Installing { dir: dir.to_string_lossy().to_string(), asks_where, started })
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -957,7 +1014,7 @@ pub fn run() {
         .manage(Pending(Mutex::new(None)))
         .manage(PendingPackage(Mutex::new(package_from_args(std::env::args()))))
         .invoke_handler(tauri::generate_handler![
-            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package, package_label, office_here
+            get_server, app_version, connect, forget_server, discover, check_local, probe, hello, trust_ca, check_update, install_update, restart_app, pick_package, install_package, pending_package, recent_package, package_label, office_here, pick_folder, check_folder, install_result
         ])
         .setup(|app| {
             let menu = Menu::with_items(

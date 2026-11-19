@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.5.1 — an office that is slow to answer is waited for; the setup page is never shown over an office that is already installed on the PC.
+AlexBooks for Windows 1.5.2 — setting up a new office asks where the books will be kept: on this PC, or in a shared folder on the office's server.

@@ -1,5 +1,12 @@
 # What's new — AlexBooks for Windows
 
+## 1.5.2 — the office's server, from the start
+
+- **Setting up a new office asks where the books will be kept**: on this PC, or on the office's server. With a server, you pick its shared folder (or type it, like \\SERVER\office) and the office goes straight into it — nothing to move later.
+- **The folder is tried before anything is installed.** If this PC cannot open it or save in it, or an office already lives there, the page says so right away.
+- **AlexBooks opens when the office is completely ready**, not while its books are still on their way to the server. If the books could not be put on the server, the office still works on this PC and the page says what happened.
+- A package made before AlexBooks 2.7.8 cannot do this; the page says so and offers the old way.
+
 ## 1.5.1 — a slow office is waited for
 
 - **The setup page no longer shows over an office that is already installed.** When the office's server was busy and slow to answer, and the package from the email was still in Downloads, opening AlexBooks showed "set up a new office", as if nothing had been installed. Nothing was lost, but it looked that way.
