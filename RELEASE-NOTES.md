@@ -1,1 +1,1 @@
-AlexBooks for Windows 1.5.2 — setting up a new office asks where the books will be kept: on this PC, or in a shared folder on the office's server.
+AlexBooks for Windows 1.5.3 — a security update: it warns before trusting a certificate that is not limited to your office.

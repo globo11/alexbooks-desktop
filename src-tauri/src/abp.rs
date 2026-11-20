@@ -139,7 +139,10 @@ pub fn check_expiry(zip_bytes: &[u8]) -> Result<(), String> {
     let mut text = String::new();
     for i in 0..archive.len() {
         let mut f = archive.by_index(i).map_err(|e| e.to_string())?;
-        if f.name().ends_with("/files/install/office.json") {
+        // (the name through enclosed_name: a name that tries to leave the package is no name at all - and the same
+        //  call in every version of the zip library)
+        let is_office = f.enclosed_name().map(|p| p.to_string_lossy().replace('\\', "/").ends_with("/files/install/office.json")).unwrap_or(false);
+        if is_office {
             f.read_to_string(&mut text).map_err(|e| e.to_string())?;
             break;
         }

@@ -1,5 +1,10 @@
 # What's new — AlexBooks for Windows
 
+## 1.5.3 — a security update
+
+- **A warning before trusting a certificate that is not limited to your office.** An AlexBooks server (2.7.13 or newer) hands out a certificate that works for that server only, and it is trusted as before. If a server hands out one that could vouch for any website, this program now says so and asks before installing it.
+- A library this program uses to open install packages was updated to its current version.
+
 ## 1.5.2 — the office's server, from the start
 
 - **Setting up a new office asks where the books will be kept**: on this PC, or on the office's server. With a server, you pick its shared folder (or type it, like \\SERVER\office) and the office goes straight into it — nothing to move later.

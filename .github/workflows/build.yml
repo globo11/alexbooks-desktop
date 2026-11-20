@@ -5,6 +5,8 @@
 #  - before the Release: the window check (ci/) starts the built program on this machine and fails the build when
 #    its window does not open the office.
 #  - needs the repo secrets TAURI_SIGNING_PRIVATE_KEY and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+# 1.5.3: every outside step is pinned to an exact version (the long code), not to a name its owner can move: this
+# job holds the key that signs the installer every office PC updates to.
 name: build
 on:
   push:
@@ -17,12 +19,14 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262          # v4
+      - uses: dtolnay/rust-toolchain@39008827e6b4319a349e9a42dfc90579dd25f1ca     # the 'stable' line, 2026-11-20
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0      # v2
         with:
           workspaces: "src-tauri -> target"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020        # v4
         with:
           node-version: 22
           cache: npm
@@ -42,7 +46,7 @@ jobs:
           Copy-Item $exe.FullName out/AlexBooks-Setup.exe
           Copy-Item ($exe.FullName + ".sig") out/AlexBooks-Setup.exe.sig
           Get-ChildItem out | Select-Object Name, Length
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
         with:
           name: AlexBooks-Setup
           path: out/AlexBooks-Setup.exe*
@@ -64,7 +68,7 @@ jobs:
           $old = Get-ChildItem "$env:LOCALAPPDATA\AlexBooks" -Filter *.exe | Where-Object { $_.Name -notmatch 'unins' } | Select-Object -First 1
           Write-Host "new: $($new.FullName)   previous: $($old.FullName)"
           .\ci\window-check.ps1 -Exe $new.FullName -Out window-check -OldExe $old.FullName
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02   # v4
         if: always()
         with:
           name: window-check
@@ -77,7 +81,7 @@ jobs:
           "version=$v" >> $env:GITHUB_OUTPUT
       - name: Release
         if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65   # v2
         with:
           tag_name: v${{ steps.ver.outputs.version }}
           name: AlexBooks for Windows ${{ steps.ver.outputs.version }}

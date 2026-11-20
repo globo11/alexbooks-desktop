@@ -20,6 +20,7 @@ use serde::{Deserialize, Serialize};
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 mod abp;
 mod place;
+mod trust;
 #[cfg_attr(not(windows), allow(dead_code))]
 mod engine;
 
@@ -362,6 +363,24 @@ fn trust_ca_blocking(app: &AppHandle, server: &str) -> Result<String, String> {
         .map_err(|e| e.to_string())?;
     if !pem.contains("BEGIN CERTIFICATE") {
         return Err(format!("{host} did not hand out its certificate. It may be running an AlexBooks older than 1.25.7 — update the server first."));
+    }
+    // 1.5.3 (trust.rs): an authority that may sign for ANY name is installed only after the person has been told what
+    // that means. An AlexBooks server from 2.7.13 on hands out one that may sign for its own computer only, and
+    // this PC's own server needs no question either.
+    if !is_this_pc(&host) && !trust::office_only(&pem).unwrap_or(false) {
+        let answer = rfd::MessageDialog::new()
+            .set_title("Check before you continue")
+            .set_description(format!(
+                "{host} is asking this PC to trust a security certificate that is not limited to your office.\n\n\
+                 If it is installed, whoever runs {host} could pose as other secure websites (a bank, email) to this Windows user.\n\n\
+                 An AlexBooks server on version 2.7.13 or newer never asks for this. Continue only if you are sure {host} is your office's server and it has not been updated yet.\n\n\
+                 Install it anyway?"))
+            .set_buttons(rfd::MessageButtons::YesNo)
+            .set_level(rfd::MessageLevel::Warning)
+            .show();
+        if answer != rfd::MessageDialogResult::Yes {
+            return Err(format!("Nothing was installed. If {host} is your office's server, update AlexBooks on it (2.7.13 or newer) and click Trust again."));
+        }
     }
     let dir = config_dir(app).ok_or("no config folder")?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

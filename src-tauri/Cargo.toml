@@ -1,6 +1,6 @@
 [package]
 name = "alexbooks-desktop"
-version = "1.5.2"
+version = "1.5.3"
 description = "AlexBooks for Windows — the office's own window onto the AlexBooks server"
 authors = ["Alex Tax Services Corp"]
 edition = "2021"
@@ -25,7 +25,8 @@ rfd = { version = "0.15", default-features = false, features = ["gtk3"] }
 aes-gcm = "0.10"
 pbkdf2 = { version = "0.12", default-features = false, features = ["hmac"] }
 sha2 = "0.10"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }     # 1.5.3: was 2 (six published advisories, fixed in 9)
+x509-parser = "0.18"                                                          # 1.5.3 (trust.rs): reads what a certificate authority may sign for
 
 # 1.5.0 (engine.rs): the page engine's own interface, for what the toolkit has no setting for. The same versions the
 # toolkit itself uses, so there is still one copy of each in the program.
